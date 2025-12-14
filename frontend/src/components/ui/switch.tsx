@@ -7,7 +7,7 @@ interface SwitchProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
-  ({ className, onCheckedChange, checked, ...props }, ref) => {
+  ({ className, onCheckedChange, checked }, _ref) => {
     return (
       <button
         type="button"

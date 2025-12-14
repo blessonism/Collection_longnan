@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { submitForm, saveDraft, checkContent, type SummaryForm as SummaryFormType, type CheckResult } from '@/lib/api'
+import { submitForm, saveDraft, type SummaryForm as SummaryFormType, type CheckResult } from '@/lib/api'
 import { Loader2, Send, Save, CheckCircle, AlertCircle, Check } from 'lucide-react'
 
 // 计算最近一周的日期范围（周五或之前显示本周，周六/周日显示上周）
@@ -142,7 +142,6 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
       }
       
       let buffer = ''
-      let prevStep = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -451,31 +450,13 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
                             }
                           } else if (suggestion.length > original.length) {
                             // 添加操作
-                            for (let j = 0; j < suggestion.length; j++) {
-                              const before = suggestion.slice(0, j)
-                              const after = suggestion.slice(j + 1)
-                              if (before + after === original) {
-                                // 找到了要添加的字符
-                                const toAdd = suggestion[j]
-                                if (lineText.includes(original)) {
-                                  return lineText.replace(original, suggestion)
-                                }
-                              }
+                            if (lineText.includes(original)) {
+                              return lineText.replace(original, suggestion)
                             }
                           } else {
                             // 替换操作（长度相同）
-                            for (let j = 0; j < original.length; j++) {
-                              if (original[j] !== suggestion[j]) {
-                                // 找到差异位置，尝试在行内定位
-                                const before = original.slice(0, j)
-                                const oldChar = original[j]
-                                const newChar = suggestion[j]
-                                const after = original.slice(j + 1)
-                                const pattern = before + oldChar + after
-                                if (lineText.includes(pattern)) {
-                                  return lineText.replace(pattern, suggestion)
-                                }
-                              }
+                            if (lineText.includes(original)) {
+                              return lineText.replace(original, suggestion)
                             }
                           }
                           return null

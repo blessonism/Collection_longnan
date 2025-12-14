@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+npm-debug.log
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+
+# 本地数据
+backend/data/*.db
+backend/uploads/*
+backend/archives/*
+
+# 文档
+*.md
+周小结模板/
