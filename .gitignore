@@ -1,0 +1,28 @@
+# 环境变量
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.pyo
+
+# Node
+node_modules/
+
+# 数据文件
+backend/data/*.db
+docker-data/
+
+# 上传和归档
+backend/uploads/*
+backend/archives/*
+!backend/uploads/.gitkeep
+!backend/archives/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
