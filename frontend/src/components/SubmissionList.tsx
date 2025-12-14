@@ -65,19 +65,19 @@ function SubmissionItem({
   const [actionsExpanded, setActionsExpanded] = useState(false)
   
   return (
-    <div className="p-4 hover:bg-slate-50">
+    <div className="p-2 sm:p-4 hover:bg-slate-50">
       <div className="flex items-center justify-between">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium">{sub.name}</span>
-            <Badge variant={statusMap[sub.status]?.variant || 'default'}>
+          <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+            <span className="font-medium text-sm sm:text-base">{sub.name}</span>
+            <Badge variant={statusMap[sub.status]?.variant || 'default'} className="text-xs">
               {statusMap[sub.status]?.label || sub.status}
             </Badge>
             {sub.check_result && sub.check_result.total_issues > 0 && (
-              <Badge variant="warning">{sub.check_result.total_issues} 个问题</Badge>
+              <Badge variant="warning" className="text-xs">{sub.check_result.total_issues} 个问题</Badge>
             )}
           </div>
-          <div className="text-sm text-slate-500 mt-1">
+          <div className="text-xs sm:text-sm text-slate-500 mt-1">
             {new Date(sub.created_at).toLocaleString()}
           </div>
         </div>
@@ -109,17 +109,17 @@ function SubmissionItem({
       
       {/* 移动端展开的操作按钮 */}
       {actionsExpanded && (
-        <div className="flex gap-2 mt-3 pt-3 border-t sm:hidden">
-          <Button size="sm" variant="outline" onClick={onView} className="flex-1">
-            <Eye className="w-4 h-4 mr-1" />
+        <div className="flex gap-2 mt-2 pt-2 border-t sm:hidden">
+          <Button size="sm" variant="outline" onClick={onView} className="flex-1 h-8 text-xs">
+            <Eye className="w-3 h-3 mr-1" />
             查看
           </Button>
-          <Button size="sm" variant="outline" onClick={onExport} disabled={actionLoading === sub.id} className="flex-1">
-            <Download className="w-4 h-4 mr-1" />
+          <Button size="sm" variant="outline" onClick={onExport} disabled={actionLoading === sub.id} className="flex-1 h-8 text-xs">
+            <Download className="w-3 h-3 mr-1" />
             导出
           </Button>
-          <Button size="sm" variant="destructive" onClick={onDelete} disabled={actionLoading === sub.id} className="flex-1">
-            <Trash2 className="w-4 h-4 mr-1" />
+          <Button size="sm" variant="destructive" onClick={onDelete} disabled={actionLoading === sub.id} className="flex-1 h-8 text-xs">
+            <Trash2 className="w-3 h-3 mr-1" />
             删除
           </Button>
         </div>
@@ -278,13 +278,13 @@ export function SubmissionList({ refreshKey }: Props) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="w-5 h-5" />
+      <CardHeader className="px-3 sm:px-6">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+          <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
           提交记录
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 sm:px-6">
         {message && (
           <div className={`mb-4 p-3 rounded-md text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
             {message.text}
@@ -299,25 +299,26 @@ export function SubmissionList({ refreshKey }: Props) {
               return (
                 <div key={group.dateRange} className="border rounded-lg overflow-hidden">
                   {/* 分组标题 */}
-                  <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+                  <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3 bg-slate-50 gap-2">
                     <button
                       onClick={() => toggleGroup(group.dateRange)}
-                      className="flex items-center gap-2 hover:bg-slate-100 -ml-2 px-2 py-1 rounded transition-colors"
+                      className="flex items-center gap-1 sm:gap-2 hover:bg-slate-100 px-1 sm:px-2 py-1 rounded transition-colors min-w-0"
                     >
                       {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-slate-500" />
+                        <ChevronDown className="w-4 h-4 text-slate-500 flex-shrink-0" />
                       ) : (
-                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                        <ChevronRight className="w-4 h-4 text-slate-500 flex-shrink-0" />
                       )}
-                      <Calendar className="w-4 h-4 text-slate-500" />
-                      <span className="font-medium">{group.displayRange}</span>
-                      <Badge variant="secondary" className="ml-2">
+                      <Calendar className="w-4 h-4 text-slate-500 hidden sm:block flex-shrink-0" />
+                      <span className="font-medium text-sm sm:text-base truncate">{group.displayRange}</span>
+                      <Badge variant="secondary" className="ml-1 sm:ml-2 text-xs flex-shrink-0">
                         {group.submissions.length} 人
                       </Badge>
                     </button>
                     <Button
                       size="sm"
                       variant="outline"
+                      className="h-7 sm:h-8 text-xs sm:text-sm px-2 sm:px-3 flex-shrink-0"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleBatchCheck(group)
@@ -326,11 +327,11 @@ export function SubmissionList({ refreshKey }: Props) {
                       title="一键校验该分组所有记录"
                     >
                       {batchCheckingGroup === group.dateRange ? (
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1 animate-spin" />
                       ) : (
-                        <CheckCircle className="w-4 h-4 mr-1" />
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1" />
                       )}
-                      一键校验
+                      <span className="hidden sm:inline">一键校验</span>
                     </Button>
                   </div>
                   

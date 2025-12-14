@@ -8,7 +8,7 @@ import {
   listDailyMembers,
   getDailySummary,
   createDailyReport,
-  deleteDailyReport,
+
   optimizeDaily,
   type DailyMember,
   type DailyReportSummary,
@@ -21,8 +21,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Trash2,
-  Send,
+  Save,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -217,9 +216,11 @@ export function DailyPanel() {
   const [optimizedText, setOptimizedText] = useState<string | null>(null)
   const [showOptimizeModal, setShowOptimizeModal] = useState(false)
   const [editingOptimized, setEditingOptimized] = useState('')
+  const [contentVisible, setContentVisible] = useState(true)
   
   // 用于取消过期请求
   const abortControllerRef = useRef<AbortController | null>(null)
+  const prevDateRef = useRef(selectedDate)
 
   // 初始加载人员列表（只加载一次）
   useEffect(() => {
@@ -241,26 +242,20 @@ export function DailyPanel() {
       abortControllerRef.current.abort()
     }
     abortControllerRef.current = new AbortController()
-
+    
     setSummaryLoading(true)
-    setOptimizedText(null) // 切换日期时清除优化结果
     try {
       const res = await getDailySummary(date)
       setSummary(res.data)
       
-      // 更新已提交的内容，保留未提交的输入
+      // 设置该日期的已提交内容
       const serverContents: Record<number, string> = {}
       res.data.reports.forEach((r) => {
         serverContents[r.member_id] = r.content
       })
       setOriginalContents(serverContents)
-      setContents((prev) => {
-        const updated = { ...prev }
-        res.data.reports.forEach((r) => {
-          updated[r.member_id] = r.content
-        })
-        return updated
-      })
+      setContents(serverContents)
+      setOptimizedText(null)
     } catch (e: any) {
       if (e.name !== 'CanceledError') {
         console.error(e)
@@ -270,10 +265,25 @@ export function DailyPanel() {
       setInitialLoading(false)
     }
   }
-
-  // 日期变化时加载汇总
+  
+  // 日期变化时加载汇总（带淡入淡出效果）
   useEffect(() => {
-    loadSummary(selectedDate)
+    const isDateChange = prevDateRef.current !== selectedDate
+    prevDateRef.current = selectedDate
+    
+    if (isDateChange) {
+      // 先淡出
+      setContentVisible(false)
+      // 等淡出动画完成后加载数据
+      const timer = setTimeout(async () => {
+        await loadSummary(selectedDate)
+        // 数据加载完成后淡入
+        setContentVisible(true)
+      }, 150)
+      return () => clearTimeout(timer)
+    } else {
+      loadSummary(selectedDate)
+    }
   }, [selectedDate])
 
   // 日期导航
@@ -316,16 +326,7 @@ export function DailyPanel() {
     }
   }
 
-  // 删除动态
-  const handleDelete = async (reportId: number) => {
-    if (!confirm('确定删除这条动态？')) return
-    try {
-      await deleteDailyReport(reportId)
-      await loadSummary(selectedDate)
-    } catch (e) {
-      console.error(e)
-    }
-  }
+
 
   // 复制汇总文本
   const handleCopy = async () => {
@@ -388,27 +389,27 @@ export function DailyPanel() {
     <div className="space-y-4">
       {/* 日期选择器 */}
       <Card>
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={goToPrevDay}>
+        <CardContent className="py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center justify-center gap-1 sm:gap-2">
+              <Button variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={goToPrevDay}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <div className="flex items-center gap-2 px-3">
-                <Calendar className="w-4 h-4 text-slate-500" />
+              <div className="flex items-center gap-1 sm:gap-2 px-1 sm:px-3">
+                <Calendar className="w-4 h-4 text-slate-500 hidden sm:block" />
                 <Input
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-auto"
+                  className="w-auto text-sm"
                 />
               </div>
-              <Button variant="outline" size="icon" onClick={goToNextDay}>
+              <Button variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={goToNextDay}>
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={goToToday}>
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
                 今天
               </Button>
               {summaryLoading ? (
@@ -427,8 +428,8 @@ export function DailyPanel() {
       {/* 汇总预览 */}
       {summary && summary.submitted_count > 0 && (
         <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base">汇总预览</CardTitle>
                 {optimizedText && (
@@ -438,31 +439,32 @@ export function DailyPanel() {
               <div className="flex items-center gap-2">
                 <Button 
                   variant="outline" 
-                  size="sm" 
+                  size="sm"
+                  className="h-8 text-xs sm:text-sm"
                   onClick={handleOptimize}
                   disabled={optimizing}
                 >
                   {optimizing ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 animate-spin" />
                       优化中
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 mr-1" />
-                      快速优化
+                      <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      优化
                     </>
                   )}
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleCopy}>
+                <Button variant="outline" size="sm" className="h-8 text-xs sm:text-sm" onClick={handleCopy}>
                   {copied ? (
                     <>
-                      <Check className="w-4 h-4 mr-1" />
+                      <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                       已复制
                     </>
                   ) : (
                     <>
-                      <Copy className="w-4 h-4 mr-1" />
+                      <Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                       复制
                     </>
                   )}
@@ -470,8 +472,8 @@ export function DailyPanel() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="bg-slate-50 rounded-lg p-3 text-sm whitespace-pre-wrap max-h-60 overflow-y-auto">
+          <CardContent className="px-3 sm:px-6">
+            <div className="bg-slate-50 rounded-lg p-2 sm:p-3 text-sm whitespace-pre-wrap max-h-48 sm:max-h-60 overflow-y-auto">
               {optimizedText || summary.summary_text}
             </div>
             {optimizedText && (
@@ -491,22 +493,22 @@ export function DailyPanel() {
 
       {/* 人员列表 */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Users className="w-4 h-4" />
+        <CardHeader className="px-3 sm:px-6 pb-2 sm:pb-4">
+          <CardTitle className="flex items-center gap-2 text-sm sm:text-base text-slate-700">
+            <Users className="w-4 h-4 text-slate-400" />
             填写动态
-            <span className="text-sm font-normal text-slate-500">
-              ({summary?.date_display})
+            <span className="text-xs font-normal text-slate-400">
+              {summary?.date_display}
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 sm:px-6 pt-0">
           {members.length === 0 ? (
-            <div className="text-center text-slate-500 py-8">
+            <div className="text-center text-slate-400 py-8 text-sm">
               暂无人员名单，请先在管理员设置中导入名单
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className={`space-y-3 transition-opacity duration-150 ${contentVisible ? 'opacity-100' : 'opacity-0'}`}>
               {members.map((member) => {
                 const report = getReportForMember(member.id)
                 const isSubmitted = !!report
@@ -517,55 +519,65 @@ export function DailyPanel() {
                 return (
                   <div
                     key={member.id}
-                    className={`p-3 rounded-lg border transition-colors ${
-                      isSubmitted ? 'bg-green-50 border-green-200' : 'bg-white'
+                    className={`p-3 rounded-lg border transition-all ${
+                      isSubmitted 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-white border-slate-200'
                     }`}
                   >
+                    {/* 姓名、状态和保存按钮 */}
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{member.name}</span>
+                        <span className="text-sm font-medium text-slate-700">{member.name}</span>
                         {isSubmitted && (
-                          <Badge variant="success" className="text-xs">
-                            已提交
-                          </Badge>
+                          <Badge variant="success" className="text-xs">已提交</Badge>
+                        )}
+                        {hasChanged && (
+                          <span className="text-xs text-amber-500">未保存</span>
                         )}
                       </div>
-                      {isSubmitted && report && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => handleDelete(report.id)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Textarea
-                        placeholder={`请输入${member.name}的今日动态...`}
-                        value={content}
-                        onChange={(e) =>
-                          setContents((prev) => ({
-                            ...prev,
-                            [member.id]: e.target.value,
-                          }))
-                        }
-                        rows={2}
-                        className="text-sm flex-1"
-                      />
-                      <Button
+                      {/* 保存按钮 */}
+                      <button
                         onClick={() => handleSubmit(member.id)}
                         disabled={!hasChanged || submitting === member.id}
-                        className="self-end"
+                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
+                          hasChanged 
+                            ? 'bg-slate-900 text-white hover:bg-slate-800' 
+                            : 'text-slate-300 cursor-not-allowed'
+                        }`}
                       >
                         {submitting === member.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-3 h-3 animate-spin" />
                         ) : (
-                          <Send className="w-4 h-4" />
+                          <Save className="w-3 h-3" />
                         )}
-                      </Button>
+                        <span>保存</span>
+                      </button>
                     </div>
+                    {/* 输入区域 - 自动扩展高度 */}
+                    <textarea
+                      placeholder={`输入${member.name}的今日动态...`}
+                      value={content}
+                      onChange={(e) => {
+                        setContents((prev) => ({
+                          ...prev,
+                          [member.id]: e.target.value,
+                        }))
+                      }}
+                      onInput={(e) => {
+                        const target = e.target as HTMLTextAreaElement
+                        target.style.height = 'auto'
+                        target.style.height = Math.max(60, target.scrollHeight) + 'px'
+                      }}
+                      ref={(el) => {
+                        // 初始化时设置高度
+                        if (el && content) {
+                          el.style.height = 'auto'
+                          el.style.height = Math.max(60, el.scrollHeight) + 'px'
+                        }
+                      }}
+                      className="text-sm w-full min-h-[60px] resize-none overflow-hidden rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
                   </div>
                 )
               })}
@@ -576,47 +588,47 @@ export function DailyPanel() {
 
       {/* AI 优化对比弹窗 */}
       {showOptimizeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
-                <h2 className="text-lg font-semibold">AI 优化结果</h2>
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-purple-500" />
+                <h2 className="text-base sm:text-lg font-semibold">AI 优化结果</h2>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleCancelOptimize}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCancelOptimize}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
             
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-auto p-3 sm:p-4">
               {(() => {
                 const diff = diffDailyReport(summary?.summary_text || '', editingOptimized)
                 const changeCount = diff.lines.filter(l => l.hasChange).length
                 return (
-                  <div className="space-y-4">
+                  <div className="space-y-3 sm:space-y-4">
                     {/* 修改统计 */}
-                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-slate-500">
                       <span>共 {changeCount} 处修改</span>
                       <span className="inline-flex items-center gap-1">
-                        <span className="w-3 h-3 bg-red-100 border border-red-200 rounded"></span>
+                        <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-red-100 border border-red-200 rounded"></span>
                         <span>删除</span>
                       </span>
                       <span className="inline-flex items-center gap-1">
-                        <span className="w-3 h-3 bg-green-100 border border-green-200 rounded"></span>
+                        <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-100 border border-green-200 rounded"></span>
                         <span>新增</span>
                       </span>
                     </div>
                     
                     {/* 逐行对比 */}
-                    <div className="border rounded-lg overflow-hidden text-sm">
+                    <div className="border rounded-lg overflow-hidden text-xs sm:text-sm">
                       {diff.lines.map((line, i) => (
                         <div key={i} className={i > 0 ? 'border-t border-slate-100' : ''}>
                           {line.hasChange ? (
-                            <div className="space-y-1 py-2 px-3 bg-slate-50">
+                            <div className="space-y-1 py-1.5 sm:py-2 px-2 sm:px-3 bg-slate-50">
                               {/* 原文 - 删除的部分用红色高亮 */}
-                              <div className="flex items-start gap-2">
-                                <span className="text-red-500 font-medium select-none w-4">−</span>
-                                <span className="flex-1">
+                              <div className="flex items-start gap-1 sm:gap-2">
+                                <span className="text-red-500 font-medium select-none w-3 sm:w-4 flex-shrink-0">−</span>
+                                <span className="flex-1 break-all">
                                   {line.prefix && <span className="text-slate-600">{line.prefix}</span>}
                                   {line.originalParts?.map((part, pi) => (
                                     <span
@@ -629,9 +641,9 @@ export function DailyPanel() {
                                 </span>
                               </div>
                               {/* 新文 - 新增的部分用绿色高亮 */}
-                              <div className="flex items-start gap-2">
-                                <span className="text-green-500 font-medium select-none w-4">+</span>
-                                <span className="flex-1">
+                              <div className="flex items-start gap-1 sm:gap-2">
+                                <span className="text-green-500 font-medium select-none w-3 sm:w-4 flex-shrink-0">+</span>
+                                <span className="flex-1 break-all">
                                   {line.prefix && <span className="text-slate-600">{line.prefix}</span>}
                                   {line.modifiedParts?.map((part, pi) => (
                                     <span
@@ -645,7 +657,7 @@ export function DailyPanel() {
                               </div>
                             </div>
                           ) : (
-                            <div className="py-1.5 px-3 text-slate-600">
+                            <div className="py-1 sm:py-1.5 px-2 sm:px-3 text-slate-600 break-all">
                               {line.originalLine || '\u00A0'}
                             </div>
                           )}
@@ -656,13 +668,13 @@ export function DailyPanel() {
                     {/* 可编辑区域 */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-purple-600">编辑优化结果</span>
+                        <span className="text-xs sm:text-sm font-medium text-purple-600">编辑优化结果</span>
                         <Badge variant="outline" className="text-xs text-purple-600 border-purple-200">可修改</Badge>
                       </div>
                       <Textarea
                         value={editingOptimized}
                         onChange={(e) => setEditingOptimized(e.target.value)}
-                        className="h-40 text-sm resize-none"
+                        className="h-32 sm:h-40 text-xs sm:text-sm resize-none"
                         placeholder="你可以在这里修改优化后的内容..."
                       />
                     </div>
@@ -671,12 +683,12 @@ export function DailyPanel() {
               })()}
             </div>
             
-            <div className="flex items-center justify-end gap-3 p-4 border-t bg-slate-50">
-              <Button variant="outline" onClick={handleCancelOptimize}>
+            <div className="flex items-center justify-end gap-2 sm:gap-3 p-3 sm:p-4 border-t bg-slate-50">
+              <Button variant="outline" size="sm" className="h-8 sm:h-9" onClick={handleCancelOptimize}>
                 取消
               </Button>
-              <Button onClick={handleAcceptOptimized}>
-                <Check className="w-4 h-4 mr-1" />
+              <Button size="sm" className="h-8 sm:h-9" onClick={handleAcceptOptimized}>
+                <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                 采纳
               </Button>
             </div>

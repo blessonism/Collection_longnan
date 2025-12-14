@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SummaryForm } from '@/components/SummaryForm'
 import { SubmissionList } from '@/components/SubmissionList'
 import { ArchivePanel } from '@/components/ArchivePanel'
@@ -10,13 +10,35 @@ type Tab = 'submit' | 'list' | 'archive' | 'daily' | 'admin'
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('daily')
+  const [displayTab, setDisplayTab] = useState<Tab>('daily')
+  const [isVisible, setIsVisible] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
+  const isFirstRender = useRef(true)
+
+  // Tab 切换时的淡入淡出效果
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    
+    // 先淡出
+    setIsVisible(false)
+    
+    // 等淡出完成后切换内容并淡入
+    const timer = setTimeout(() => {
+      setDisplayTab(activeTab)
+      setIsVisible(true)
+    }, 150)
+    
+    return () => clearTimeout(timer)
+  }, [activeTab])
 
   const tabs = [
-    { id: 'daily' as Tab, label: '每日动态', icon: CalendarDays },
-    { id: 'submit' as Tab, label: '填写周小结', icon: PenLine },
-    { id: 'list' as Tab, label: '提交记录', icon: FileText },
-    { id: 'archive' as Tab, label: '批量归档', icon: Package },
+    { id: 'daily' as Tab, label: '每日动态', shortLabel: '动态', icon: CalendarDays },
+    { id: 'submit' as Tab, label: '填写周小结', shortLabel: '周报', icon: PenLine },
+    { id: 'list' as Tab, label: '提交记录', shortLabel: '记录', icon: FileText },
+    { id: 'archive' as Tab, label: '批量归档', shortLabel: '归档', icon: Package },
   ]
 
   return (
@@ -27,7 +49,7 @@ function App() {
             className="text-xl font-bold cursor-pointer hover:text-slate-600 transition-colors"
             onClick={() => setActiveTab('submit')}
           >
-            周小结管理平台
+            动态管理平台
           </h1>
           <button
             onClick={() => setActiveTab('admin')}
@@ -45,43 +67,59 @@ function App() {
 
       {activeTab !== 'admin' && (
         <nav className="bg-white border-b">
-          <div className="max-w-4xl mx-auto px-4">
-            <div className="flex gap-1">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-slate-900 text-slate-900'
-                      : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              ))}
+          <div className="max-w-4xl mx-auto px-2 sm:px-4">
+            <div className="flex">
+              {tabs.map(tab => {
+                const isActive = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-1 sm:gap-2 px-1.5 sm:px-4 py-3 font-medium border-b-2 transition-all ${
+                      isActive
+                        ? 'border-slate-900 text-slate-900'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    <tab.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? '' : 'opacity-70'}`} />
+                    {/* 移动端：选中显示完整标签，未选中显示缩写 */}
+                    <span className={`sm:hidden whitespace-nowrap ${
+                      isActive ? 'text-sm' : 'text-xs opacity-70'
+                    }`}>
+                      {isActive ? tab.label : tab.shortLabel}
+                    </span>
+                    {/* 桌面端：始终显示完整标签 */}
+                    <span className={`hidden sm:inline text-sm whitespace-nowrap ${
+                      isActive ? '' : 'opacity-70'
+                    }`}>
+                      {tab.label}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </nav>
       )}
 
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {activeTab === 'submit' && (
-          <SummaryForm onSubmitSuccess={() => setRefreshKey(k => k + 1)} />
-        )}
-        {activeTab === 'list' && (
-          <SubmissionList refreshKey={refreshKey} />
-        )}
-        {activeTab === 'archive' && (
-          <ArchivePanel />
-        )}
-        {activeTab === 'daily' && (
-          <DailyPanel />
-        )}
-        {activeTab === 'admin' && (
-          <AdminPanel />
-        )}
+      <main className="max-w-4xl mx-auto px-2 sm:px-4 py-4 sm:py-6">
+        <div className={`transition-opacity duration-150 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
+          {displayTab === 'submit' && (
+            <SummaryForm onSubmitSuccess={() => setRefreshKey(k => k + 1)} />
+          )}
+          {displayTab === 'list' && (
+            <SubmissionList refreshKey={refreshKey} />
+          )}
+          {displayTab === 'archive' && (
+            <ArchivePanel />
+          )}
+          {displayTab === 'daily' && (
+            <DailyPanel />
+          )}
+          {displayTab === 'admin' && (
+            <AdminPanel />
+          )}
+        </div>
       </main>
     </div>
   )
