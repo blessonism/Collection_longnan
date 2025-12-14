@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,6 +100,51 @@ async def combined_check(content: str) -> list[CheckIssue]:
     
     print(f"[Pipeline] Total unique issues: {len(unique_issues)}")
     return unique_issues
+
+
+class BatchCheckRequest(BaseModel):
+    submission_ids: List[int]
+
+
+@router.post("/batch")
+async def batch_check_submissions(request: BatchCheckRequest, db: AsyncSession = Depends(get_db)):
+    """批量校对多个提交记录"""
+    success_count = 0
+    failed_count = 0
+    
+    for submission_id in request.submission_ids:
+        try:
+            result = await db.execute(select(Submission).where(Submission.id == submission_id))
+            submission = result.scalar_one_or_none()
+            
+            if not submission:
+                failed_count += 1
+                continue
+            
+            # 组合内容进行校对
+            content = f"""本周工作：
+{submission.weekly_work}
+
+下周计划：
+{submission.next_week_plan}"""
+            
+            try:
+                issues = await combined_check(content)
+                check_result = {"total_issues": len(issues), "issues": [i.model_dump() for i in issues]}
+                
+                # 更新校对结果
+                submission.check_result = check_result
+                submission.status = "checked"
+                await db.commit()
+                success_count += 1
+            except AICheckError:
+                failed_count += 1
+                continue
+        except Exception as e:
+            print(f"Batch check error for submission {submission_id}: {e}")
+            failed_count += 1
+    
+    return {"success": success_count, "failed": failed_count}
 
 
 @router.post("/content", response_model=CheckResult)

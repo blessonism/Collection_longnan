@@ -90,6 +90,7 @@ function DetailContent({ submission, onUpdate }: { submission: Submission; onUpd
       if (!reader) throw new Error('无法读取响应')
       
       let buffer = ''
+      let finalResult: CheckResult | null = null
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -108,10 +109,26 @@ function DetailContent({ submission, onUpdate }: { submission: Submission; onUpd
               }
               setCheckMessage(data.message || data.error || '')
               if (data.step === 'done' && data.result) {
+                finalResult = data.result
                 setCheckResult(data.result)
               }
             } catch { /* ignore */ }
           }
+        }
+      }
+      
+      // 校验完成后，保存结果到数据库并更新状态为已校对
+      if (finalResult) {
+        try {
+          await fetch(`http://localhost:8000/api/submissions/${submission.id}/check-result`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ check_result: finalResult })
+          })
+          // 通知父组件刷新
+          onUpdate?.()
+        } catch (e) {
+          console.error('保存校验结果失败', e)
         }
       }
     } catch {

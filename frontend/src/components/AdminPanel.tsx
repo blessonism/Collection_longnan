@@ -6,7 +6,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { createAdminApi, type RuleConfig, type PromptConfig } from '@/lib/api'
-import { Loader2, Save, RotateCcw, LogIn, LogOut, Settings, FileText } from 'lucide-react'
+import { Loader2, Save, RotateCcw, LogIn, LogOut, Settings, FileText, Users } from 'lucide-react'
+import { DailyMemberManager } from './DailyMemberManager'
 
 export function AdminPanel() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -16,7 +17,7 @@ export function AdminPanel() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<'rules' | 'prompt'>('rules')
+  const [activeTab, setActiveTab] = useState<'rules' | 'prompt' | 'members'>('rules')
 
   const [rules, setRules] = useState<RuleConfig>({
     check_number_format: true,
@@ -31,6 +32,7 @@ export function AdminPanel() {
   const [prompt, setPrompt] = useState<PromptConfig>({
     typo_prompt: '',
     punctuation_prompt: '',
+    daily_optimize_prompt: '',
     check_typo: true,
     check_punctuation_semantic: true,
   })
@@ -218,12 +220,25 @@ export function AdminPanel() {
           <FileText className="w-4 h-4 inline mr-2" />
           AI Prompt 配置
         </button>
+        <button
+          onClick={() => setActiveTab('members')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'members' 
+              ? 'border-slate-900 text-slate-900' 
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Users className="w-4 h-4 inline mr-2" />
+          每日动态人员
+        </button>
       </div>
 
-      {loading ? (
+      {loading && activeTab !== 'members' ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
         </div>
+      ) : activeTab === 'members' ? (
+        <DailyMemberManager />
       ) : activeTab === 'rules' ? (
         <Card>
           <CardHeader>
@@ -304,6 +319,22 @@ export function AdminPanel() {
               <Textarea
                 value={prompt.punctuation_prompt}
                 onChange={e => setPrompt(prev => ({ ...prev, punctuation_prompt: e.target.value }))}
+                rows={15}
+                className="font-mono text-xs"
+              />
+            </CardContent>
+          </Card>
+
+          {/* 每日动态优化 Prompt */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">每日动态优化 Prompt</CardTitle>
+              <p className="text-xs text-slate-500">定义 AI 优化每日动态的行为规则</p>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={prompt.daily_optimize_prompt}
+                onChange={e => setPrompt(prev => ({ ...prev, daily_optimize_prompt: e.target.value }))}
                 rows={15}
                 className="font-mono text-xs"
               />

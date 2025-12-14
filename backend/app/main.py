@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import init_db
-from app.routers import form_router, check_router, submission_router, archive_router, admin_router
+from app.routers import form_router, check_router, submission_router, archive_router, admin_router, daily_router
 import os
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.include_router(check_router)
 app.include_router(submission_router)
 app.include_router(archive_router)
 app.include_router(admin_router)
+app.include_router(daily_router)
 
 @app.get("/")
 async def root():

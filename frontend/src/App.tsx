@@ -3,15 +3,17 @@ import { SummaryForm } from '@/components/SummaryForm'
 import { SubmissionList } from '@/components/SubmissionList'
 import { ArchivePanel } from '@/components/ArchivePanel'
 import { AdminPanel } from '@/components/AdminPanel'
-import { FileText, Package, PenLine, Settings } from 'lucide-react'
+import { DailyPanel } from '@/components/DailyPanel'
+import { FileText, Package, PenLine, Settings, CalendarDays } from 'lucide-react'
 
-type Tab = 'submit' | 'list' | 'archive' | 'admin'
+type Tab = 'submit' | 'list' | 'archive' | 'daily' | 'admin'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('submit')
+  const [activeTab, setActiveTab] = useState<Tab>('daily')
   const [refreshKey, setRefreshKey] = useState(0)
 
   const tabs = [
+    { id: 'daily' as Tab, label: '每日动态', icon: CalendarDays },
     { id: 'submit' as Tab, label: '填写周小结', icon: PenLine },
     { id: 'list' as Tab, label: '提交记录', icon: FileText },
     { id: 'archive' as Tab, label: '批量归档', icon: Package },
@@ -73,6 +75,9 @@ function App() {
         )}
         {activeTab === 'archive' && (
           <ArchivePanel />
+        )}
+        {activeTab === 'daily' && (
+          <DailyPanel />
         )}
         {activeTab === 'admin' && (
           <AdminPanel />

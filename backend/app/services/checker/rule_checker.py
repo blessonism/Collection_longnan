@@ -107,6 +107,9 @@ class RuleChecker:
         if config.get("check_ending_punctuation", True):
             issues.extend(self._check_ending_punctuation(line, location))
 
+        if config.get("check_mid_sentence_period", True):
+            issues.extend(self._check_mid_sentence_period(line, location))
+
         return issues
 
     def _check_number_format(self, line: str, location: str) -> list[CheckIssue]:
@@ -354,6 +357,52 @@ class RuleChecker:
                         original=")",
                         suggestion="）"
                     ))
+        return issues
+
+    def _check_mid_sentence_period(self, line: str, location: str) -> list[CheckIssue]:
+        """检查句中句号：同一条内容中间不应该有句号，应该用分号"""
+        issues = []
+        if not line:
+            return issues
+        
+        # 去掉序号部分
+        content = re.sub(r'^\d+[.、。]\s*', '', line)
+        if not content:
+            return issues
+        
+        # 查找句中的句号（不是最后一个字符的句号）
+        # 句号后面还有内容，说明是句中句号
+        for match in re.finditer(r'。', content):
+            pos = match.start()
+            # 如果句号不是最后一个字符，说明是句中句号
+            if pos < len(content) - 1:
+                # 获取句号前后的上下文用于唯一定位
+                start = max(0, pos - 3)
+                end = min(len(content), pos + 4)
+                context_str = content[start:end]
+                
+                # 确保 original 在整行中唯一
+                original = context_str
+                for length in range(len(context_str), min(len(content), pos + 10)):
+                    test_start = max(0, pos - (length - 4))
+                    test_end = min(len(content), pos + (length - 3))
+                    test_str = content[test_start:test_end]
+                    if line.count(test_str) == 1:
+                        original = test_str
+                        break
+                
+                # 将句号替换为分号
+                suggestion = original.replace('。', '；', 1)
+                
+                issues.append(CheckIssue(
+                    type="punctuation",
+                    severity="error",
+                    location=location,
+                    context=content[:40] + "..." if len(content) > 40 else content,
+                    original=original,
+                    suggestion=suggestion
+                ))
+        
         return issues
 
     def _check_ending_punctuation(self, line: str, location: str) -> list[CheckIssue]:

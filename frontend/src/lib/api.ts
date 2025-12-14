@@ -62,6 +62,9 @@ export const checkContent = (text: string) =>
 export const checkSubmission = (id: number) => 
   api.post<CheckResult>(`/check/${id}`)
 
+export const batchCheckSubmissions = (ids: number[]) =>
+  api.post<{ success: number; failed: number }>('/check/batch', { submission_ids: ids })
+
 export const getCheckResult = (id: number) => 
   api.get<CheckResult>(`/check/${id}/result`)
 
@@ -97,6 +100,7 @@ export interface RuleConfig {
 export interface PromptConfig {
   typo_prompt: string
   punctuation_prompt: string
+  daily_optimize_prompt: string
   check_typo: boolean
   check_punctuation_semantic: boolean
 }
@@ -118,3 +122,70 @@ export const createAdminApi = (username: string, password: string) => {
 }
 
 export default api
+
+
+// ========== 每日动态相关 ==========
+
+export interface DailyMember {
+  id: number
+  name: string
+  sort_order: number
+  is_active: boolean
+}
+
+export interface DailyReport {
+  id: number
+  member_id: number
+  member_name: string
+  date: string
+  content: string
+}
+
+export interface DailyReportSummary {
+  date: string
+  date_display: string
+  total_members: number
+  submitted_count: number
+  reports: DailyReport[]
+  summary_text: string
+}
+
+// 人员管理
+export const listDailyMembers = (includeInactive = false) =>
+  api.get<DailyMember[]>('/daily/members', { params: { include_inactive: includeInactive } })
+
+export const createDailyMember = (data: { name: string; sort_order?: number }) =>
+  api.post<DailyMember>('/daily/members', data)
+
+export const importDailyMembers = (names: string[]) =>
+  api.post<DailyMember[]>('/daily/members/import', { names })
+
+export const updateDailyMember = (id: number, data: Partial<DailyMember>) =>
+  api.put<DailyMember>(`/daily/members/${id}`, data)
+
+export const deleteDailyMember = (id: number) =>
+  api.delete(`/daily/members/${id}`)
+
+// 动态记录
+export const createDailyReport = (data: { member_id: number; date: string; content: string }) =>
+  api.post<DailyReport>('/daily/reports', data)
+
+export const listDailyReports = (date: string) =>
+  api.get<DailyReport[]>('/daily/reports', { params: { report_date: date } })
+
+export const getDailySummary = (date: string) =>
+  api.get<DailyReportSummary>('/daily/reports/summary', { params: { report_date: date } })
+
+export const updateDailyReport = (id: number, content: string) =>
+  api.put<DailyReport>(`/daily/reports/${id}`, { content })
+
+export const deleteDailyReport = (id: number) =>
+  api.delete(`/daily/reports/${id}`)
+
+export const listDailyDates = () =>
+  api.get<string[]>('/daily/dates')
+
+
+// AI 优化每日动态
+export const optimizeDaily = (content: string) =>
+  api.post<{ optimized_content: string }>('/daily/optimize', { content })

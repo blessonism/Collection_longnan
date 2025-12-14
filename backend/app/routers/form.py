@@ -44,7 +44,7 @@ async def save_draft(form: SummaryFormCreate, db: AsyncSession = Depends(get_db)
 
 @router.get("/export/{submission_id}")
 async def export_submission(submission_id: int, db: AsyncSession = Depends(get_db)):
-    """导出为 Word 文档"""
+    """导出为 Word 文档，并将状态更新为已归档"""
     result = await db.execute(select(Submission).where(Submission.id == submission_id))
     submission = result.scalar_one_or_none()
     
@@ -57,6 +57,10 @@ async def export_submission(submission_id: int, db: AsyncSession = Depends(get_d
         weekly_work=submission.weekly_work,
         next_week_plan=submission.next_week_plan
     )
+    
+    # 导出后将状态更新为已归档
+    submission.status = "archived"
+    await db.commit()
     
     filename = f"{submission.name}周小结({submission.date_range}).docx"
     # 使用 URL 编码处理中文文件名

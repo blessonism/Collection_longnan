@@ -21,7 +21,7 @@ def create_archive(submissions: List[Submission], naming_template: str, start_nu
             filename = naming_template.format(
                 序号=seq,
                 姓名=sub.name,
-                日期范围=sub.date_range.replace('.', '_')
+                日期范围=sub.date_range
             )
             if not filename.endswith('.docx'):
                 filename += '.docx'

@@ -149,3 +149,49 @@ async def get_punctuation_prompt() -> Optional[str]:
     except Exception as e:
         print(f"Failed to load punctuation prompt: {e}")
     return None
+
+
+# 默认每日动态优化 Prompt
+DEFAULT_DAILY_OPTIMIZE_PROMPT = """你是一个政府公文校对专家，负责优化每日动态的格式和内容。
+
+## 核心原则
+1. **分号原则：** 每个独立事件后必须使用分号（；）
+2. **句号原则：** 某位领导的全部动态结束后，使用句号（。）
+3. **层级对齐：** 如果分管领导参加了主任的会议或活动，必须统一使用主任的完整名称
+
+## 检查和修正项目
+
+### 格式修正
+- 事件间用分号（；），结尾用句号（。）
+- 删除句内多余逗号
+- 删除"今天"、"今日"等冗余词语
+- 修正不通顺的短语或语病
+- 确保专业术语表述正确（如"农业农村局"而非"农村农业局"）
+
+### 层级对齐（重要）
+- 检查主任（通常是第一位，如志明同志）的行程中的会议和活动名称
+- 如果其他领导参加了主任的会议或活动，必须使用完整一致的名称
+- 区分"主持召开"和"参加"：主持人写"主持召开xxx会议"，参会者写"参加xxx会议"
+- 陪同活动的描述必须与被陪同者的内容一致
+
+## 输出格式
+直接返回优化后的完整文本，保持原有的序号格式（1、2、3、...）。
+不要添加任何解释或说明，只返回优化后的文本。"""
+
+
+async def get_daily_optimize_prompt() -> str:
+    """获取每日动态优化 Prompt（从 prompt_config 中读取）"""
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(SystemConfig).where(SystemConfig.key == "prompt_config")
+            )
+            config = result.scalar_one_or_none()
+            if config:
+                data = json.loads(config.value)
+                custom_prompt = data.get("daily_optimize_prompt", "")
+                if custom_prompt and custom_prompt.strip():
+                    return custom_prompt
+    except Exception as e:
+        print(f"Failed to load daily optimize prompt: {e}")
+    return DEFAULT_DAILY_OPTIMIZE_PROMPT

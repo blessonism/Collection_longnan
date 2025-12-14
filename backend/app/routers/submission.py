@@ -92,3 +92,29 @@ async def update_submission(
     await db.commit()
     await db.refresh(submission)
     return submission
+
+
+class CheckResultUpdate(BaseModel):
+    check_result: dict
+
+
+@router.put("/{submission_id}/check-result", response_model=SubmissionResponse)
+async def update_check_result(
+    submission_id: int,
+    update: CheckResultUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """保存校验结果并更新状态为已校对"""
+    from fastapi import HTTPException
+    
+    result = await db.execute(select(Submission).where(Submission.id == submission_id))
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    
+    submission.check_result = update.check_result
+    submission.status = "checked"
+    
+    await db.commit()
+    await db.refresh(submission)
+    return submission
