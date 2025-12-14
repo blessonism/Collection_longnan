@@ -1,6 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
 from app.database import Base
+
+# 上海时区 (UTC+8)
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    return datetime.now(SHANGHAI_TZ).replace(tzinfo=None)
 
 class Submission(Base):
     __tablename__ = "submissions"
@@ -18,5 +24,5 @@ class Submission(Base):
     status = Column(String(20), default="submitted")  # draft | submitted | checked | archived
     check_result = Column(JSON, nullable=True)  # 校对结果
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_shanghai_now)
+    updated_at = Column(DateTime, default=get_shanghai_now, onupdate=get_shanghai_now)

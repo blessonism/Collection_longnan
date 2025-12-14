@@ -37,6 +37,7 @@ class ConfigUpdate(BaseModel):
 class RuleConfig(BaseModel):
     """规则检查配置"""
     check_number_format: bool = True
+    check_missing_number: bool = True  # 检查缺少序号
     check_extra_spaces: bool = True
     check_english_punctuation: bool = True
     check_slash_to_semicolon: bool = True
@@ -47,54 +48,14 @@ class RuleConfig(BaseModel):
 
 class PromptConfig(BaseModel):
     """AI Prompt 配置"""
-    system_prompt: str
+    typo_prompt: str = ""  # 错字检查器 prompt
+    punctuation_prompt: str = ""  # 标点检查器 prompt
     check_typo: bool = True
     check_punctuation_semantic: bool = True
 
 
 # 默认配置
 DEFAULT_RULE_CONFIG = RuleConfig()
-DEFAULT_PROMPT = """你是一个公文校对助手，负责检查错别字和标点语义问题。
-
-## 重要原则：
-- 宁可漏报，不可误报
-- 只报告你100%确定是错误的内容
-
-## 你检查两类问题：
-
-### 1. 错别字（type: "typo"）
-明确的错别字，如"按排"→"安排"，"工做"→"工作"
-
-### 2. 标点语义问题（type: "punctuation"）
-同一条工作内，用逗号分隔的多个独立任务应该用分号分隔。
-例如：
-- 错误："梳理算力中心项目材料，参加观德巷项目例会"
-- 正确："梳理算力中心项目材料；参加观德巷项目例会"
-判断标准：如果逗号前后是两个独立的、可以单独成句的任务，应该用分号。
-
-## 你绝对不要检查：
-- 英文标点转中文标点（由程序处理）
-- 序号格式（由程序处理）
-- 空格问题（由程序处理）
-- 句末标点（由程序处理）
-- 专有名词（地名、人名、机构名）
-- 语句是否完整（不要建议补充内容）
-
-## 输出格式：
-{
-  "issues": [
-    {
-      "type": "typo或punctuation",
-      "location": "本周工作第2条",
-      "context": "包含错误的句子片段，约15-20字",
-      "original": "错误内容",
-      "suggestion": "正确内容"
-    }
-  ]
-}
-
-没有问题时返回 {"issues": []}
-只返回 JSON。"""
 
 
 @router.get("/verify")
@@ -188,12 +149,29 @@ async def get_prompt(
     _: str = Depends(verify_admin)
 ):
     """获取 AI Prompt 配置"""
+    from app.services.checker.deepseek_checker import TYPO_PROMPT
+    from app.services.checker.punctuation_ai_checker import PUNCTUATION_PROMPT
+    
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == "prompt_config"))
     config = result.scalar_one_or_none()
     
     if config:
-        return json.loads(config.value)
-    return {"system_prompt": DEFAULT_PROMPT, "check_typo": True, "check_punctuation_semantic": True}
+        saved = json.loads(config.value)
+        # 兼容旧格式，如果没有新字段或为空则使用默认值
+        typo = saved.get("typo_prompt", "")
+        punct = saved.get("punctuation_prompt", "")
+        return {
+            "typo_prompt": typo if typo and typo.strip() else TYPO_PROMPT,
+            "punctuation_prompt": punct if punct and punct.strip() else PUNCTUATION_PROMPT,
+            "check_typo": saved.get("check_typo", True),
+            "check_punctuation_semantic": saved.get("check_punctuation_semantic", True),
+        }
+    return {
+        "typo_prompt": TYPO_PROMPT,
+        "punctuation_prompt": PUNCTUATION_PROMPT,
+        "check_typo": True,
+        "check_punctuation_semantic": True
+    }
 
 
 @router.put("/prompt")

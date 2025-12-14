@@ -1,3 +1,4 @@
+from __future__ import annotations
 import zipfile
 from io import BytesIO
 from typing import List

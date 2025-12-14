@@ -20,6 +20,7 @@ class CheckIssue(BaseModel):
     context: str = ""  # 包含错误的上下文
     original: str
     suggestion: str
+    source: str = "rule"  # rule | ai_typo | ai_punctuation - 问题来源
 
 class CheckResult(BaseModel):
     total_issues: int

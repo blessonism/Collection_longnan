@@ -1,12 +1,53 @@
 """
-AI 校对器 - 使用 DeepSeek 检查错别字和标点语义问题
-支持从数据库加载自定义 Prompt
+AI 错字检查器 - 专门检查错别字
 """
+from __future__ import annotations
 from openai import AsyncOpenAI
 from app.config import settings
 from app.schemas import CheckIssue
-from app.services.checker.config_loader import get_prompt_config, DEFAULT_PROMPT_CONFIG
+from app.services.checker.config_loader import get_prompt_config, get_typo_prompt
 import json
+
+TYPO_PROMPT = """你是一个公文错字校对专家，只负责检查错别字。
+
+## 重要原则：
+- 宁可漏报，不可误报
+- 只报告你100%确定是错误的错别字
+- original 和 suggestion 必须是汉字词语，不能是标点符号或数字
+
+## 你只检查：
+错别字（汉字写错），如：
+- "按排"→"安排"
+- "工做"→"工作"
+- "负责"→"负责"
+- "研究"→"研究"
+
+## 你绝对不要检查（非常重要！违反将导致系统错误）：
+- 标点符号（如 。，；：、！？等）- 由其他程序处理
+- 序号格式（如 1. 2. 3.）- 由其他程序处理
+- 数字 - 不是你的职责
+- 空格问题 - 由其他程序处理
+- 专有名词（地名、人名、机构名）
+- 语句是否完整（不要建议补充内容）
+- 用词是否"更好"（不做优化建议）
+
+## 输出格式：
+{
+  "issues": [
+    {
+      "type": "typo",
+      "location": "本周工作第2条",
+      "context": "包含错误的句子片段，约15-20字",
+      "original": "错误的汉字词语",
+      "suggestion": "正确的汉字词语"
+    }
+  ]
+}
+
+## 重要：original 和 suggestion 必须都是汉字，不能包含标点符号或数字！
+
+没有错别字时返回 {"issues": []}
+只返回 JSON。"""
 
 
 class DeepSeekChecker:
@@ -19,45 +60,47 @@ class DeepSeekChecker:
             api_key=settings.DEEPSEEK_API_KEY,
             base_url=base_url
         )
-        print(f"DeepSeek checker initialized with base_url: {base_url}")
+        print(f"DeepSeek typo checker initialized with base_url: {base_url}")
 
-    async def check(self, content: str) -> list[CheckIssue]:
-        """调用 DeepSeek 进行内容校对"""
+    async def check(self, content: str, retry_count: int = 0) -> list[CheckIssue]:
+        """调用 AI 进行错字检查，支持重试"""
         if not settings.DEEPSEEK_API_KEY:
-            print("DeepSeek API key not configured")
             return []
 
-        # 加载配置
+        # 检查配置是否启用
         config = await get_prompt_config()
-        
-        # 如果 AI 检查都被禁用，直接返回
-        if not config.get("check_typo", True) and not config.get("check_punctuation_semantic", True):
-            print("AI check disabled by config")
+        if not config.get("check_typo", True):
             return []
 
-        system_prompt = config.get("system_prompt", DEFAULT_PROMPT_CONFIG["system_prompt"])
+        max_retries = 1  # 最多重试1次
+
+        # 获取自定义 prompt，如果没有则使用默认
+        custom_prompt = await get_typo_prompt()
+        prompt_to_use = custom_prompt if custom_prompt else TYPO_PROMPT
 
         try:
-            print(f"Calling DeepSeek API with content length: {len(content)}")
+            print(f"Calling AI typo checker with content length: {len(content)}, retry: {retry_count}")
             response = await self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": prompt_to_use},
                     {"role": "user", "content": content}
                 ],
                 temperature=0.1
             )
 
             result_text = response.choices[0].message.content
-            print(f"DeepSeek response: {result_text[:500]}")
+            print(f"AI typo response: {result_text[:500]}")
 
-            # 尝试提取 JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0]
+            # 提取 JSON（增强容错）
+            json_text = self._extract_json(result_text)
+            if not json_text:
+                if retry_count < max_retries:
+                    print(f"Failed to extract JSON, retrying... ({retry_count + 1}/{max_retries})")
+                    return await self.check(content, retry_count + 1)
+                raise ValueError("AI 返回格式错误，无法解析 JSON")
 
-            result = json.loads(result_text.strip())
+            result = json.loads(json_text)
 
             issues = []
             seen = set()
@@ -69,36 +112,85 @@ class DeepSeekChecker:
 
                 original = item.get("original", "")
                 suggestion = item.get("suggestion", "")
-                issue_type = item.get("type", "unknown")
 
                 if not original or not suggestion or original == suggestion:
                     continue
 
-                # 根据配置过滤
-                if issue_type == "typo" and not config.get("check_typo", True):
-                    continue
-                if issue_type == "punctuation" and not config.get("check_punctuation_semantic", True):
-                    continue
-
                 issues.append(CheckIssue(
-                    type=issue_type,
-                    severity="warning" if issue_type == "typo" else "error",
+                    type="typo",
+                    severity="warning",
                     location=item.get("location", ""),
                     context=item.get("context", ""),
                     original=original,
-                    suggestion=suggestion
+                    suggestion=suggestion,
+                    source="ai_typo"
                 ))
-            print(f"Found {len(issues)} issues (after dedup)")
+            
+            print(f"AI typo checker found {len(issues)} issues")
             return issues
 
         except json.JSONDecodeError as e:
-            print(f"JSON parse error: {e}, response: {result_text}")
-            return []
+            if retry_count < max_retries:
+                print(f"JSON parse error, retrying... ({retry_count + 1}/{max_retries})")
+                return await self.check(content, retry_count + 1)
+            raise ValueError(f"AI 错字检查返回格式错误: {e}")
+        except ValueError:
+            raise  # 重新抛出 ValueError
         except Exception as e:
-            print(f"DeepSeek check error: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            return []
+            if retry_count < max_retries:
+                print(f"AI error, retrying... ({retry_count + 1}/{max_retries})")
+                return await self.check(content, retry_count + 1)
+            raise ValueError(f"AI 错字检查失败: {type(e).__name__}: {e}")
+
+    def _extract_json(self, text: str) -> str | None:
+        """从 AI 响应中提取 JSON，增强容错"""
+        if not text:
+            return None
+        
+        text = text.strip()
+        
+        # 尝试1：直接解析
+        if text.startswith('{') and text.endswith('}'):
+            try:
+                json.loads(text)
+                return text
+            except json.JSONDecodeError:
+                pass
+        
+        # 尝试2：提取 ```json ... ``` 代码块
+        if "```json" in text:
+            try:
+                json_text = text.split("```json")[1].split("```")[0].strip()
+                json.loads(json_text)
+                return json_text
+            except (IndexError, json.JSONDecodeError):
+                pass
+        
+        # 尝试3：提取 ``` ... ``` 代码块
+        if "```" in text:
+            try:
+                json_text = text.split("```")[1].split("```")[0].strip()
+                json.loads(json_text)
+                return json_text
+            except (IndexError, json.JSONDecodeError):
+                pass
+        
+        # 尝试4：查找第一个 { 和最后一个 } 之间的内容
+        start = text.find('{')
+        end = text.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            try:
+                json_text = text[start:end + 1]
+                json.loads(json_text)
+                return json_text
+            except json.JSONDecodeError:
+                pass
+        
+        # 尝试5：如果内容很短且看起来像空结果
+        if '[]' in text or '"issues": []' in text or '"issues":[]' in text:
+            return '{"issues": []}'
+        
+        return None
 
 
 deepseek_checker = DeepSeekChecker()

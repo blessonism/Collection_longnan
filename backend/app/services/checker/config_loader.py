@@ -1,5 +1,6 @@
 """配置加载器 - 从数据库加载检查器配置"""
 import json
+from typing import Optional
 from sqlalchemy import select
 from app.database import async_session
 from app.models.config import SystemConfig
@@ -7,6 +8,7 @@ from app.models.config import SystemConfig
 # 默认规则配置
 DEFAULT_RULE_CONFIG = {
     "check_number_format": True,
+    "check_missing_number": True,  # 检查缺少序号
     "check_extra_spaces": True,
     "check_english_punctuation": True,
     "check_slash_to_semicolon": True,
@@ -28,11 +30,23 @@ DEFAULT_PROMPT = """你是一个公文校对助手，负责检查错别字和标
 明确的错别字，如"按排"→"安排"，"工做"→"工作"
 
 ### 2. 标点语义问题（type: "punctuation"）
-同一条工作内，用逗号分隔的多个独立任务应该用分号分隔。
-例如：
+重点检查：同一条工作内，用逗号分隔的多个独立任务应该用分号分隔。
+
+判断标准：如果逗号前后是两个独立的、可以单独成句的任务/工作，应该用分号而非逗号。
+
+示例1：
 - 错误："梳理算力中心项目材料，参加观德巷项目例会"
 - 正确："梳理算力中心项目材料；参加观德巷项目例会"
-判断标准：如果逗号前后是两个独立的、可以单独成句的任务，应该用分号。
+- 原因："梳理材料"和"参加例会"是两个独立任务
+
+示例2：
+- 错误："已完成党组织选举后续资料报告完善工作，按时序要求推进居委换届，已完成6个社区选举委员会推选"
+- 正确："已完成党组织选举后续资料报告完善工作，按时序要求推进居委换届；已完成6个社区选举委员会推选"
+- 原因："推进居委换届"和"已完成选举委员会推选"是两个独立任务，应用分号
+
+示例3（不需要修改）：
+- "到金都社区第二网格查看建设进度，参加金都社区党员大会演练"
+- 原因：这是同一个地点的连续活动，用逗号是正确的
 
 ## 你绝对不要检查：
 - 英文标点转中文标点（由程序处理）
@@ -42,21 +56,27 @@ DEFAULT_PROMPT = """你是一个公文校对助手，负责检查错别字和标
 - 专有名词（地名、人名、机构名）
 - 语句是否完整（不要建议补充内容）
 
-## 输出格式：
+## 输出格式要求（非常重要）：
+- original 必须是原文中实际存在的内容，不要添加或修改任何字符
+- original 应该包含需要修改的逗号及其前后2-4个字
+- suggestion 是将 original 中的逗号改为分号后的结果
+- context 是包含错误的原文片段
+
+示例输出：
 {
   "issues": [
     {
-      "type": "typo或punctuation",
-      "location": "本周工作第2条",
-      "context": "包含错误的句子片段，约15-20字",
-      "original": "错误内容",
-      "suggestion": "正确内容"
+      "type": "punctuation",
+      "location": "本周工作第1条",
+      "context": "按时序要求推进居委换届，已完成6个社区选举委员会推选",
+      "original": "换届，已完成",
+      "suggestion": "换届；已完成"
     }
   ]
 }
 
 没有问题时返回 {"issues": []}
-只返回 JSON。"""
+只返回 JSON，不要其他内容。"""
 
 DEFAULT_PROMPT_CONFIG = {
     "system_prompt": DEFAULT_PROMPT,
@@ -93,3 +113,39 @@ async def get_prompt_config() -> dict:
     except Exception as e:
         print(f"Failed to load prompt config: {e}")
     return DEFAULT_PROMPT_CONFIG
+
+
+async def get_typo_prompt() -> Optional[str]:
+    """获取自定义错字检查 Prompt，如果没有自定义则返回 None"""
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(SystemConfig).where(SystemConfig.key == "prompt_config")
+            )
+            config = result.scalar_one_or_none()
+            if config:
+                data = json.loads(config.value)
+                custom_prompt = data.get("typo_prompt", "")
+                if custom_prompt and custom_prompt.strip():
+                    return custom_prompt
+    except Exception as e:
+        print(f"Failed to load typo prompt: {e}")
+    return None
+
+
+async def get_punctuation_prompt() -> Optional[str]:
+    """获取自定义标点检查 Prompt，如果没有自定义则返回 None"""
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(SystemConfig).where(SystemConfig.key == "prompt_config")
+            )
+            config = result.scalar_one_or_none()
+            if config:
+                data = json.loads(config.value)
+                custom_prompt = data.get("punctuation_prompt", "")
+                if custom_prompt and custom_prompt.strip():
+                    return custom_prompt
+    except Exception as e:
+        print(f"Failed to load punctuation prompt: {e}")
+    return None

@@ -24,6 +24,7 @@ export interface CheckIssue {
   context: string
   original: string
   suggestion: string
+  source: 'rule' | 'ai_typo' | 'ai_punctuation'  // 问题来源
 }
 
 export interface CheckResult {
@@ -70,6 +71,9 @@ export const listSubmissions = (params?: { date_range?: string; status?: string 
 export const getSubmission = (id: number) => 
   api.get<Submission>(`/submissions/${id}`)
 
+export const updateSubmission = (id: number, data: Partial<SummaryForm>) =>
+  api.put<Submission>(`/submissions/${id}`, data)
+
 export const deleteSubmission = (id: number) => 
   api.delete(`/submissions/${id}`)
 
@@ -91,7 +95,8 @@ export interface RuleConfig {
 }
 
 export interface PromptConfig {
-  system_prompt: string
+  typo_prompt: string
+  punctuation_prompt: string
   check_typo: boolean
   check_punctuation_semantic: boolean
 }

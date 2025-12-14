@@ -21,7 +21,12 @@ function App() {
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold">周小结管理平台</h1>
+          <h1 
+            className="text-xl font-bold cursor-pointer hover:text-slate-600 transition-colors"
+            onClick={() => setActiveTab('submit')}
+          >
+            周小结管理平台
+          </h1>
           <button
             onClick={() => setActiveTab('admin')}
             className={`p-2 rounded-md transition-colors ${

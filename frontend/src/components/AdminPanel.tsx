@@ -29,7 +29,8 @@ export function AdminPanel() {
   })
 
   const [prompt, setPrompt] = useState<PromptConfig>({
-    system_prompt: '',
+    typo_prompt: '',
+    punctuation_prompt: '',
     check_typo: true,
     check_punctuation_semantic: true,
   })
@@ -253,50 +254,74 @@ export function AdminPanel() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">AI Prompt 配置</CardTitle>
-            <p className="text-sm text-slate-500">自定义 AI 校对的系统提示词</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-4 pb-4 border-b">
+        <div className="space-y-4">
+          {/* 开关配置 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">AI 检查开关</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label>启用错别字检查</Label>
+                <Label>启用错别字检查（AI）</Label>
                 <Switch
                   checked={prompt.check_typo}
                   onCheckedChange={checked => setPrompt(prev => ({ ...prev, check_typo: checked }))}
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label>启用标点语义检查</Label>
+                <Label>启用标点语义检查（AI）</Label>
                 <Switch
                   checked={prompt.check_punctuation_semantic}
                   onCheckedChange={checked => setPrompt(prev => ({ ...prev, check_punctuation_semantic: checked }))}
                 />
               </div>
-            </div>
-            <div>
-              <Label>System Prompt</Label>
-              <p className="text-xs text-slate-500 mb-2">定义 AI 的行为和检查规则</p>
+            </CardContent>
+          </Card>
+
+          {/* 错字检查器 Prompt */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">错字检查器 Prompt</CardTitle>
+              <p className="text-xs text-slate-500">定义 AI 错字检查的行为规则</p>
+            </CardHeader>
+            <CardContent>
               <Textarea
-                value={prompt.system_prompt}
-                onChange={e => setPrompt(prev => ({ ...prev, system_prompt: e.target.value }))}
-                rows={20}
-                className="font-mono text-sm"
+                value={prompt.typo_prompt}
+                onChange={e => setPrompt(prev => ({ ...prev, typo_prompt: e.target.value }))}
+                rows={15}
+                className="font-mono text-xs"
               />
-            </div>
-            <div className="flex gap-3 pt-4">
-              <Button onClick={handleSavePrompt} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                保存配置
-              </Button>
-              <Button variant="outline" onClick={handleReset}>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                重置默认
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          {/* 标点检查器 Prompt */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">标点检查器 Prompt</CardTitle>
+              <p className="text-xs text-slate-500">定义 AI 标点语义检查的行为规则</p>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={prompt.punctuation_prompt}
+                onChange={e => setPrompt(prev => ({ ...prev, punctuation_prompt: e.target.value }))}
+                rows={15}
+                className="font-mono text-xs"
+              />
+            </CardContent>
+          </Card>
+
+          {/* 保存按钮 */}
+          <div className="flex gap-3">
+            <Button onClick={handleSavePrompt} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+              保存配置
+            </Button>
+            <Button variant="outline" onClick={handleReset}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              重置默认
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )

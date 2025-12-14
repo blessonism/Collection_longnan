@@ -5,6 +5,7 @@
 ## 功能
 
 - 在线填写周小结（格式由模板控制）
+- 自动格式化（一行多条自动拆分为每条一行）
 - AI 内容校对（规则检查 + AI 语义检查）
 - 一键修复校对问题
 - 导出标准格式 Word 文档
@@ -13,18 +14,97 @@
 
 ## 技术栈
 
-- 后端：Python + FastAPI + SQLite
-- 前端：React + TypeScript + Tailwind CSS + shadcn/ui
-- AI：DeepSeek API
+| 层级 | 技术 |
+|------|------|
+| 前端 | React + TypeScript + Tailwind CSS + shadcn/ui |
+| 后端 | Python + FastAPI + SQLAlchemy (async) |
+| 数据库 | SQLite (aiosqlite) |
+| AI | DeepSeek API (OpenAI 兼容接口) |
+| 文档处理 | python-docx |
+
+---
+
+## 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    前端 (React + Vite)                       │
+├─────────────┬─────────────┬─────────────┬───────────────────┤
+│ SummaryForm │ SubmissionList │ ArchivePanel │ AdminPanel    │
+│ (填写表单)   │ (提交记录)     │ (批量归档)   │ (管理配置)    │
+└──────┬──────┴──────┬───────┴──────┬──────┴────────┬─────────┘
+       │             │              │               │
+       ▼             ▼              ▼               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    后端 (FastAPI)                            │
+├─────────────────────────────────────────────────────────────┤
+│  Routers:                                                   │
+│  ├── form.py      → 表单提交、草稿、Word导出                 │
+│  ├── check.py     → 校对接口 (普通/SSE流式)                  │
+│  ├── submission.py → CRUD 操作                              │
+│  ├── archive.py   → 批量打包下载                            │
+│  └── admin.py     → 管理员配置 (HTTP Basic Auth)            │
+├─────────────────────────────────────────────────────────────┤
+│  Services:                                                  │
+│  ├── checker/                                               │
+│  │   ├── rule_checker.py         → 规则检查器 (确定性)       │
+│  │   ├── deepseek_checker.py     → AI 错字检查器            │
+│  │   ├── punctuation_ai_checker.py → AI 标点检查器          │
+│  │   └── config_loader.py        → 配置加载器               │
+│  ├── exporter.py                 → Word 导出                │
+│  └── archiver.py                 → ZIP 打包                 │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    数据层                                    │
+│  ├── SQLite (submissions, system_configs)                   │
+│  ├── uploads/   (上传文件)                                  │
+│  └── archives/  (归档文件)                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 自动格式化
+
+点击"AI 校对"按钮时，系统会自动将一行多条内容拆分为每条一行：
+
+```
+输入：1.持续跟进工作。2.对接协会。3.继续招商。
+
+格式化后：
+1.持续跟进工作。
+2.对接协会。
+3.继续招商。
+```
+
+支持 `1.` `2.` 和 `1、` `2、` 两种序号格式。
 
 ---
 
 ## 校对处理 Pipeline
 
-校对采用**规则检查 + AI 检查**双层架构，先快后慢，分工明确。
+校对采用**规则检查 + AI 双检查**三层架构，分段并行处理。
 
 ```
-用户内容 → 规则检查器(rule_checker) → AI检查器(deepseek_checker) → 合并去重 → 返回结果
+用户内容
+    │
+    ▼
+自动格式化（一行多条 → 每条一行）
+    │
+    ├──────────────────────────────────────┐
+    ▼                                      ▼
+本周工作部分                           下周计划部分
+    │                                      │
+    ├─────────┬─────────┐                  ├─────────┬─────────┐
+    ▼         ▼         ▼                  ▼         ▼         ▼
+规则检查   AI错字    AI标点             规则检查   AI错字    AI标点
+    │         │         │                  │         │         │
+    └─────────┴─────────┴──────────────────┴─────────┴─────────┘
+                              │
+                              ▼
+                         去重合并
 ```
 
 ### 第一层：规则检查器（快速、确定性）
@@ -42,17 +122,31 @@
 | 英文括号 | 括号内有中文时转中文括号 | `(内容)` → `（内容）` |
 | 斜杠 | 中文语境中转分号 | `工作/会议` → `工作；会议` |
 | 连续标点 | 去除重复 | `。。` → `。` |
-| 句末标点 | 每条必须以句号结尾 | `；` → `。`，无句号则提醒添加 |
+| 句末标点 | 每条必须以句号结尾 | `；` → `。`，`！` → `。`，无句号则提醒添加 |
 | 多余空格 | 中文间不应有空格 | `工作 内容` → `工作内容` |
 
-### 第二层：AI 检查器（语义理解）
+### 第二层：AI 错字检查器（deepseek_checker）
 
-处理需要语义理解的问题，调用 DeepSeek API。
+专门检查错别字，调用 DeepSeek API。
 
 | 检测项 | 说明 | 示例 |
 |--------|------|------|
 | 错别字 | 明确的错字 | `按排` → `安排`，`工做` → `工作` |
-| 标点语义 | 独立任务间应用分号而非逗号 | `梳理材料，参加会议` → `梳理材料；参加会议` |
+
+### 第三层：AI 标点检查器（punctuation_ai_checker）
+
+专门检查需要语义理解的标点问题，调用 DeepSeek API。
+
+| 检测项 | 说明 | 示例 |
+|--------|------|------|
+| 句中误用句号 | 句号只能在句末 | `资料。报告` → `资料报告` |
+| 句号后跟逗号 | 错误组合 | `。，` → `，` 或 `；` |
+| 独立任务间用分号 | 主语切换或动作独立时 | `推进换届，已完成选举` → `推进换届；已完成选举` |
+
+**分号判断规则：**
+- 主语切换时用分号
+- 动作完全独立时用分号
+- "已完成/已组织/已..."开头的新分句用分号
 
 **AI 检查原则：**
 - 宁可漏报，不可误报
@@ -63,8 +157,7 @@
 
 1. **分号 `；`** 用于分隔同一条内的并列事项
 2. **句号 `。`** 用于每条工作的结尾
-3. **`。；` 组合**是正确的公文写法（前一事项结束，后接并列事项）
-4. **冒号 `：`** 用于总述后引出具体内容，不要改成分号
+3. **冒号 `：`** 用于总述后引出具体内容，不要改成分号
 
 ---
 
@@ -83,6 +176,22 @@
 **页面设置：**
 - 行距：固定值 28 磅
 - 页边距：上 3.7cm，下 3.5cm，左右 2.8cm
+
+---
+
+## 数据模型
+
+**Submission（提交记录）**
+```
+id, name, date_range, weekly_work, next_week_plan
+source (form/upload), status (draft/submitted/checked/archived)
+check_result (JSON), created_at, updated_at
+```
+
+**SystemConfig（系统配置）**
+```
+key, value (JSON), description, updated_at
+```
 
 ---
 
@@ -149,27 +258,50 @@ ADMIN_PASSWORD=your_password
 ## 项目结构
 
 ```
-backend/
-├── app/
-│   ├── services/
-│   │   ├── checker/
-│   │   │   ├── rule_checker.py     # 规则检查器
-│   │   │   ├── deepseek_checker.py # AI检查器
-│   │   │   └── config_loader.py    # 配置加载器
-│   │   ├── exporter.py             # Word导出
-│   │   └── archiver.py             # 批量归档
-│   ├── routers/
-│   │   ├── check.py                # 校对接口
-│   │   ├── form.py                 # 表单接口
-│   │   └── admin.py                # 管理员接口
-│   ├── models/
-│   │   ├── submission.py           # 提交记录模型
-│   │   └── config.py               # 系统配置模型
-│   └── ...
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── SummaryForm.tsx         # 主表单组件
-│   │   └── AdminPanel.tsx          # 管理员面板
-│   └── ...
+weekly-summary-platform/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI 入口
+│   │   ├── config.py            # 配置
+│   │   ├── database.py          # 数据库连接
+│   │   ├── schemas.py           # Pydantic 模型
+│   │   ├── models/
+│   │   │   ├── submission.py    # 提交记录模型
+│   │   │   └── config.py        # 系统配置模型
+│   │   ├── routers/
+│   │   │   ├── form.py          # 表单接口
+│   │   │   ├── check.py         # 校对接口
+│   │   │   ├── submission.py    # 提交记录接口
+│   │   │   ├── archive.py       # 归档接口
+│   │   │   └── admin.py         # 管理员接口
+│   │   └── services/
+│   │       ├── checker/
+│   │       │   ├── rule_checker.py           # 规则检查器
+│   │       │   ├── deepseek_checker.py       # AI错字检查器
+│   │       │   ├── punctuation_ai_checker.py # AI标点检查器
+│   │       │   └── config_loader.py          # 配置加载器
+│   │       ├── exporter.py      # Word导出
+│   │       └── archiver.py      # 批量归档
+│   ├── data/                    # SQLite 数据库
+│   ├── uploads/                 # 上传文件
+│   ├── archives/                # 归档文件
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx              # 主应用
+│   │   ├── main.tsx             # 入口
+│   │   ├── components/
+│   │   │   ├── SummaryForm.tsx      # 填写表单组件
+│   │   │   ├── SubmissionList.tsx   # 提交记录列表
+│   │   │   ├── SubmissionDetail.tsx # 提交详情
+│   │   │   ├── ArchivePanel.tsx     # 归档面板
+│   │   │   ├── AdminPanel.tsx       # 管理员面板
+│   │   │   └── ui/                  # shadcn 组件
+│   │   └── lib/
+│   │       └── api.ts           # API 封装
+│   ├── package.json
+│   └── vite.config.ts
+│
+└── README.md
 ```

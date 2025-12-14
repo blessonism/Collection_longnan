@@ -58,7 +58,7 @@ async def export_submission(submission_id: int, db: AsyncSession = Depends(get_d
         next_week_plan=submission.next_week_plan
     )
     
-    filename = f"{submission.name}_周小结_{submission.date_range.replace('.', '_')}.docx"
+    filename = f"{submission.name}周小结({submission.date_range}).docx"
     # 使用 URL 编码处理中文文件名
     from urllib.parse import quote
     encoded_filename = quote(filename)

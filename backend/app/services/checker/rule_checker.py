@@ -3,6 +3,7 @@
 不需要 AI，用代码逻辑直接检测
 支持从数据库加载配置
 """
+from __future__ import annotations
 import re
 from app.schemas import CheckIssue
 from app.services.checker.config_loader import get_rule_config, DEFAULT_RULE_CONFIG
@@ -20,6 +21,8 @@ class RuleChecker:
         lines = content.split('\n')
         current_section = ""
         item_index = 0
+        line_index_in_section = 0  # 当前区块内的行号
+        last_number = 0  # 上一个序号，用于检测序号跳跃
 
         for line in lines:
             line = line.strip()
@@ -29,16 +32,53 @@ class RuleChecker:
             if "本周工作" in line:
                 current_section = "本周工作"
                 item_index = 0
+                line_index_in_section = 0
+                last_number = 0
                 continue
             elif "下周计划" in line:
                 current_section = "下周计划"
                 item_index = 0
+                line_index_in_section = 0
+                last_number = 0
                 continue
 
+            # 在区块内的内容行
+            if current_section:
+                line_index_in_section += 1
+            
             if re.match(r'^\d', line):
                 item_index += 1
                 location = f"{current_section}第{item_index}条" if current_section else f"第{item_index}条"
                 issues.extend(self._check_line(line, location, config))
+                
+                # 检查序号连续性
+                if config.get("check_number_sequence", True):
+                    number_match = re.match(r'^(\d+)[.、。]', line)
+                    if number_match:
+                        current_number = int(number_match.group(1))
+                        expected = last_number + 1
+                        if last_number > 0 and current_number != expected:
+                            issues.append(CheckIssue(
+                                type="format",
+                                severity="error",
+                                location=location,
+                                context=line[:30] + "..." if len(line) > 30 else line,
+                                original=f"{current_number}.",
+                                suggestion=f"{expected}."
+                            ))
+                        # 始终递增期望序号，不管实际序号是多少
+                        last_number += 1
+            elif current_section and config.get("check_missing_number", True):
+                # 非空行但不以数字开头，提示缺少序号
+                location = f"{current_section}第{line_index_in_section}行"
+                issues.append(CheckIssue(
+                    type="format",
+                    severity="error",
+                    location=location,
+                    context=line[:30] + "..." if len(line) > 30 else line,
+                    original=line[:10] if len(line) > 10 else line,
+                    suggestion=f"1.{line[:10]}" if len(line) > 10 else f"1.{line}"
+                ))
 
         return issues
 
@@ -73,6 +113,22 @@ class RuleChecker:
         """检查序号格式：必须是 1. 2. 3. 格式"""
         issues = []
 
+        # 检查重复序号：如 1.1. 或 1.1（包含后面的内容以便精确替换）
+        match = re.match(r'^(\d+)\.(\d+)\.?(.{0,3})', line)
+        if match and match.group(2):  # 确保有第二个数字
+            # original 包含重复序号部分
+            duplicate_part = f"{match.group(1)}.{match.group(2)}." if line.startswith(f"{match.group(1)}.{match.group(2)}.") else f"{match.group(1)}.{match.group(2)}"
+            following_text = match.group(3) if match.group(3) else ""
+            issues.append(CheckIssue(
+                type="format",
+                severity="error",
+                location=location,
+                context=line[:30] + "..." if len(line) > 30 else line,
+                original=duplicate_part + following_text,
+                suggestion=f"{match.group(1)}.{following_text}"
+            ))
+            return issues
+
         match = re.match(r'^(\d+)、', line)
         if match:
             issues.append(CheckIssue(
@@ -93,6 +149,31 @@ class RuleChecker:
                 location=location,
                 context=line[:20] + "..." if len(line) > 20 else line,
                 original=f"{match.group(1)}。",
+                suggestion=f"{match.group(1)}."
+            ))
+            return issues
+
+        # 检查 （1） 或 (1) 格式
+        match = re.match(r'^（(\d+)）', line)
+        if match:
+            issues.append(CheckIssue(
+                type="format",
+                severity="error",
+                location=location,
+                context=line[:20] + "..." if len(line) > 20 else line,
+                original=f"（{match.group(1)}）",
+                suggestion=f"{match.group(1)}."
+            ))
+            return issues
+
+        match = re.match(r'^\((\d+)\)', line)
+        if match:
+            issues.append(CheckIssue(
+                type="format",
+                severity="error",
+                location=location,
+                context=line[:20] + "..." if len(line) > 20 else line,
+                original=f"({match.group(1)})",
                 suggestion=f"{match.group(1)}."
             ))
             return issues
@@ -209,6 +290,30 @@ class RuleChecker:
                 original=match.group(0),
                 suggestion=match.group(1)
             ))
+        
+        # 9. 检查中英文标点混合重复（如 。. 或 .。）
+        mixed_patterns = [
+            (r'。\.', '。'),   # 中文句号+英文句号 -> 中文句号
+            (r'\.。', '。'),   # 英文句号+中文句号 -> 中文句号
+            (r'，,', '，'),    # 中文逗号+英文逗号 -> 中文逗号
+            (r',，', '，'),    # 英文逗号+中文逗号 -> 中文逗号
+            (r'；;', '；'),    # 中文分号+英文分号 -> 中文分号
+            (r';；', '；'),    # 英文分号+中文分号 -> 中文分号
+        ]
+        for pattern, replacement in mixed_patterns:
+            for match in re.finditer(pattern, line):
+                start = max(0, match.start() - 3)
+                end = min(len(line), match.end() + 3)
+                context = line[start:end]
+                issues.append(CheckIssue(
+                    type="punctuation",
+                    severity="error",
+                    location=location,
+                    context=context,
+                    original=match.group(0),
+                    suggestion=replacement
+                ))
+        
         return issues
 
     def _check_english_brackets(self, line: str, location: str) -> list[CheckIssue]:
@@ -262,39 +367,65 @@ class RuleChecker:
             return issues
 
         last_char = line[-1]
+        
+        # 获取末尾唯一标识（动态计算长度，确保在行内只出现一次）
+        def get_unique_ending(line: str) -> str:
+            """获取行末唯一标识，确保在整行中只出现一次"""
+            for length in range(2, min(len(line) + 1, 20)):
+                ending = line[-length:]
+                # 检查这个结尾在整行中是否只出现一次
+                if line.count(ending) == 1:
+                    return ending
+            # 如果找不到唯一的，返回整行
+            return line
 
         # 以分号结尾，应改为句号
         if last_char == '；':
             context = line[-15:] if len(line) > 15 else line
+            unique_ending = get_unique_ending(line)
             issues.append(CheckIssue(
                 type="punctuation",
                 severity="error",
                 location=location,
                 context=context,
-                original="；",
-                suggestion="。"
+                original=unique_ending,
+                suggestion=unique_ending[:-1] + "。"
             ))
         # 以英文句号结尾，应改为中文句号
         elif last_char == '.':
             context = line[-15:] if len(line) > 15 else line
+            unique_ending = get_unique_ending(line)
             issues.append(CheckIssue(
                 type="punctuation",
                 severity="error",
                 location=location,
                 context=context,
-                original=".",
-                suggestion="。"
+                original=unique_ending,
+                suggestion=unique_ending[:-1] + "。"
+            ))
+        # 以感叹号结尾，公文中应改为句号
+        elif last_char == '！':
+            context = line[-15:] if len(line) > 15 else line
+            unique_ending = get_unique_ending(line)
+            issues.append(CheckIssue(
+                type="punctuation",
+                severity="error",
+                location=location,
+                context=context,
+                original=unique_ending,
+                suggestion=unique_ending[:-1] + "。"
             ))
         # 末尾不是句号（也不是其他合理结尾），提醒添加句号
-        elif last_char != '。' and last_char not in '？！）':
+        elif last_char != '。' and last_char not in '？）':
             context = line[-15:] if len(line) > 15 else line
+            unique_ending = get_unique_ending(line)
             issues.append(CheckIssue(
                 type="punctuation",
                 severity="error",
                 location=location,
                 context=context,
-                original=last_char,
-                suggestion=last_char + "。"
+                original=unique_ending,
+                suggestion=unique_ending + "。"
             ))
 
         return issues
