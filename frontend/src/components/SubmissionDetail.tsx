@@ -77,7 +77,7 @@ function DetailContent({ submission, onUpdate }: { submission: Submission; onUpd
     setCheckResult(null)
     
     try {
-      const response = await fetch('http://localhost:8000/api/check/content/stream', {
+      const response = await fetch('/api/check/content/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: content })
@@ -120,7 +120,7 @@ function DetailContent({ submission, onUpdate }: { submission: Submission; onUpd
       // 校验完成后，保存结果到数据库并更新状态为已校对
       if (finalResult) {
         try {
-          await fetch(`http://localhost:8000/api/submissions/${submission.id}/check-result`, {
+          await fetch(`/api/submissions/${submission.id}/check-result`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ check_result: finalResult })

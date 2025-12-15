@@ -129,7 +129,7 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
     setCheckResult(null)
     
     try {
-      const response = await fetch('http://localhost:8000/api/check/content/stream', {
+      const response = await fetch('/api/check/content/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: content })
@@ -278,7 +278,7 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
         <CardTitle>填写周小结</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="text-sm font-medium mb-1 block">姓名 *</label>
             <Input
@@ -298,25 +298,26 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
         </div>
 
         <div>
-          <label className="text-sm font-medium mb-1 block">本周工作 *</label>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-slate-500">请按编号列出本周完成的主要工作</p>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium">本周工作 *</label>
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleGenerateClick}
               disabled={generating}
-              className="h-6 text-xs px-2"
+              className="h-6 text-xs px-2 flex-shrink-0"
             >
               {generating ? (
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
               ) : (
                 <Sparkles className="w-3 h-3 mr-1" />
               )}
-              AI快速总结本周工作
+              <span className="hidden sm:inline">从每日动态生成</span>
+              <span className="sm:hidden">AI生成</span>
             </Button>
           </div>
+          <p className="text-xs text-slate-500 mb-2">请按编号列出本周完成的主要工作</p>
           <Textarea
             value={form.weekly_work}
             onChange={e => handleChange('weekly_work', e.target.value)}
@@ -681,17 +682,19 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
           </div>
         )}
 
-        <div className="flex gap-3">
-          <Button onClick={handleCheck} variant="outline" disabled={checking || !form.weekly_work}>
-            {checking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-            AI 校对
+        <div className="flex flex-wrap gap-2 sm:gap-3">
+          <Button onClick={handleCheck} variant="outline" disabled={checking || !form.weekly_work} className="flex-1 sm:flex-none">
+            {checking ? <Loader2 className="w-4 h-4 mr-1 sm:mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1 sm:mr-2" />}
+            <span className="hidden sm:inline">AI 校对</span>
+            <span className="sm:hidden">校对</span>
           </Button>
-          <Button onClick={handleSaveDraft} variant="secondary" disabled={loading}>
-            <Save className="w-4 h-4 mr-2" />
-            保存草稿
+          <Button onClick={handleSaveDraft} variant="secondary" disabled={loading} className="flex-1 sm:flex-none">
+            <Save className="w-4 h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">保存草稿</span>
+            <span className="sm:hidden">草稿</span>
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+          <Button onClick={handleSubmit} disabled={loading} className="flex-1 sm:flex-none">
+            {loading ? <Loader2 className="w-4 h-4 mr-1 sm:mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-1 sm:mr-2" />}
             提交
           </Button>
         </div>

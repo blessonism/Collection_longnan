@@ -3,11 +3,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装依赖
+# 利用 Docker 构建缓存：先复制依赖文件
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
+# 使用 pip 缓存加速依赖安装
+# 只有 requirements.txt 变化时才会重新安装
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
+
+# 复制应用代码（代码变化不会触发依赖重装）
 COPY . .
 
 # 创建数据目录 (运行时会被 volume 覆盖)
