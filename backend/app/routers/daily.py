@@ -1,6 +1,6 @@
 """每日动态相关路由"""
 from datetime import date
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
@@ -98,7 +98,7 @@ async def delete_member(member_id: int, db: AsyncSession = Depends(get_db)):
 
 # ========== 动态记录 ==========
 
-@router.post("/reports", response_model=DailyReportResponse)
+@router.post("/reports", response_model=Optional[DailyReportResponse])
 async def create_report(data: DailyReportCreate, db: AsyncSession = Depends(get_db)):
     """提交每日动态"""
     # 检查人员是否存在
