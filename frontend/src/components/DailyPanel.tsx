@@ -236,7 +236,7 @@ export function DailyPanel() {
   }, [])
 
   // 加载某天的汇总数据
-  const loadSummary = async (date: string) => {
+  const loadSummary = async (date: string, preserveContents = false) => {
     // 取消之前的请求
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -254,7 +254,20 @@ export function DailyPanel() {
         serverContents[r.member_id] = r.content
       })
       setOriginalContents(serverContents)
-      setContents(serverContents)
+      // 只有在非保留模式下才重置 contents
+      if (!preserveContents) {
+        setContents(serverContents)
+      } else {
+        // 保留模式：只更新已保存的内容，保留用户正在编辑的内容
+        setContents(prev => {
+          const newContents = { ...prev }
+          // 更新服务器返回的内容
+          Object.keys(serverContents).forEach(key => {
+            newContents[Number(key)] = serverContents[Number(key)]
+          })
+          return newContents
+        })
+      }
       setOptimizedText(null)
     } catch (e: any) {
       if (e.name !== 'CanceledError') {
@@ -314,11 +327,18 @@ export function DailyPanel() {
         date: selectedDate,
         content,
       })
-      await loadSummary(selectedDate)
-      // 如果是清空操作，同时清空输入框
-      if (!content) {
-        setContents((prev) => ({ ...prev, [memberId]: '' }))
-      }
+      // 保存成功后，更新 originalContents 以反映新的服务器状态
+      setOriginalContents(prev => ({
+        ...prev,
+        [memberId]: content
+      }))
+      // 同步更新 contents（去除首尾空格）
+      setContents(prev => ({
+        ...prev,
+        [memberId]: content
+      }))
+      // 重新加载汇总数据以更新统计
+      await loadSummary(selectedDate, true)
     } catch (e) {
       console.error(e)
     } finally {
@@ -512,9 +532,9 @@ export function DailyPanel() {
               {members.map((member) => {
                 const report = getReportForMember(member.id)
                 const isSubmitted = !!report
-                const content = contents[member.id] || ''
-                const originalContent = originalContents[member.id] || ''
-                const hasChanged = content.trim() !== originalContent.trim()
+                const content = contents[member.id] ?? ''
+                const originalContent = originalContents[member.id] ?? ''
+                const hasChanged = content !== originalContent
 
                 return (
                   <div
@@ -536,12 +556,12 @@ export function DailyPanel() {
                           <span className="text-xs text-amber-500">未保存</span>
                         )}
                       </div>
-                      {/* 保存按钮 */}
+                      {/* 保存按钮 - 有内容变化或有新内容时可点击 */}
                       <button
                         onClick={() => handleSubmit(member.id)}
-                        disabled={!hasChanged || submitting === member.id}
+                        disabled={!hasChanged || !content.trim() || submitting === member.id}
                         className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
-                          hasChanged 
+                          hasChanged && content.trim()
                             ? 'bg-slate-900 text-white hover:bg-slate-800' 
                             : 'text-slate-300 cursor-not-allowed'
                         }`}
