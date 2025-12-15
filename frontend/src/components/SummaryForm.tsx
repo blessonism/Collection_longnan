@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { submitForm, saveDraft, type SummaryForm as SummaryFormType, type CheckResult } from '@/lib/api'
-import { Loader2, Send, Save, CheckCircle, AlertCircle, Check } from 'lucide-react'
+import { submitForm, saveDraft, generateWeeklySummary, type SummaryForm as SummaryFormType, type CheckResult, type DailyMember } from '@/lib/api'
+import { Loader2, Send, Save, CheckCircle, AlertCircle, Check, Sparkles } from 'lucide-react'
+import { MemberSelectDialog } from './MemberSelectDialog'
 
 // 计算最近一周的日期范围（周五或之前显示本周，周六/周日显示上周）
 // 周期为：周六 到 周五
@@ -53,6 +54,10 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [completedSteps, setCompletedSteps] = useState<string[]>([])  // 已完成的步骤
+  
+  // AI 生成相关状态
+  const [memberSelectOpen, setMemberSelectOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   const handleChange = (field: keyof SummaryFormType, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -222,6 +227,51 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
     }
   }
 
+  // AI 生成本周工作
+  const handleGenerateClick = () => {
+    // 如果已有内容，先确认是否覆盖
+    if (form.weekly_work.trim()) {
+      if (!confirm('当前已有本周工作内容，AI 生成将覆盖现有内容，是否继续？')) {
+        return
+      }
+    }
+    setMemberSelectOpen(true)
+  }
+
+  const handleMemberSelect = async (member: DailyMember) => {
+    if (!form.date_range) {
+      setMessage({ type: 'error', text: '请先填写日期范围' })
+      return
+    }
+
+    setGenerating(true)
+    setMessage(null)
+    
+    try {
+      const res = await generateWeeklySummary({
+        member_id: member.id,
+        date_range: form.date_range
+      })
+      
+      // 填充生成的内容
+      setForm(prev => ({
+        ...prev,
+        name: member.name,  // 同时填充姓名
+        weekly_work: res.data.content
+      }))
+      
+      setMessage({ 
+        type: 'success', 
+        text: `已根据 ${res.data.report_count} 条每日动态生成本周工作` 
+      })
+    } catch (e: any) {
+      const errorMsg = e.response?.data?.detail || 'AI 生成失败，请重试'
+      setMessage({ type: 'error', text: errorMsg })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -249,7 +299,24 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
 
         <div>
           <label className="text-sm font-medium mb-1 block">本周工作 *</label>
-          <p className="text-xs text-slate-500 mb-2">请按编号列出本周完成的主要工作</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-500">请按编号列出本周完成的主要工作</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleGenerateClick}
+              disabled={generating}
+              className="h-6 text-xs px-2"
+            >
+              {generating ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="w-3 h-3 mr-1" />
+              )}
+              AI快速总结本周工作
+            </Button>
+          </div>
           <Textarea
             value={form.weekly_work}
             onChange={e => handleChange('weekly_work', e.target.value)}
@@ -628,6 +695,13 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
             提交
           </Button>
         </div>
+
+        {/* 人员选择对话框 */}
+        <MemberSelectDialog
+          open={memberSelectOpen}
+          onOpenChange={setMemberSelectOpen}
+          onSelect={handleMemberSelect}
+        />
       </CardContent>
     </Card>
   )

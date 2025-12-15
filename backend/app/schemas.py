@@ -100,3 +100,16 @@ class DailyReportSummary(BaseModel):
     submitted_count: int
     reports: List[DailyReportResponse]
     summary_text: str  # 格式化的汇总文本
+
+
+# ========== 周小结生成 ==========
+
+class GenerateWeeklySummaryRequest(BaseModel):
+    member_id: int  # 人员 ID
+    date_range: str  # 日期范围，如 "12.7-12.13"
+
+class GenerateWeeklySummaryResponse(BaseModel):
+    content: str  # 生成的周小结内容
+    start_date: date  # 解析后的开始日期
+    end_date: date  # 解析后的结束日期
+    report_count: int  # 使用的每日动态数量

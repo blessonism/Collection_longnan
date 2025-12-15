@@ -51,6 +51,7 @@ class PromptConfig(BaseModel):
     typo_prompt: str = ""  # 错字检查器 prompt
     punctuation_prompt: str = ""  # 标点检查器 prompt
     daily_optimize_prompt: str = ""  # 每日动态优化 prompt
+    weekly_summary_prompt: str = ""  # 周小结生成 prompt
     check_typo: bool = True
     check_punctuation_semantic: bool = True
 
@@ -152,7 +153,7 @@ async def get_prompt(
     """获取 AI Prompt 配置"""
     from app.services.checker.deepseek_checker import TYPO_PROMPT
     from app.services.checker.punctuation_ai_checker import PUNCTUATION_PROMPT
-    from app.services.checker.config_loader import DEFAULT_DAILY_OPTIMIZE_PROMPT
+    from app.services.checker.config_loader import DEFAULT_DAILY_OPTIMIZE_PROMPT, DEFAULT_WEEKLY_SUMMARY_PROMPT
     
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == "prompt_config"))
     config = result.scalar_one_or_none()
@@ -163,10 +164,12 @@ async def get_prompt(
         typo = saved.get("typo_prompt", "")
         punct = saved.get("punctuation_prompt", "")
         daily = saved.get("daily_optimize_prompt", "")
+        weekly = saved.get("weekly_summary_prompt", "")
         return {
             "typo_prompt": typo if typo and typo.strip() else TYPO_PROMPT,
             "punctuation_prompt": punct if punct and punct.strip() else PUNCTUATION_PROMPT,
             "daily_optimize_prompt": daily if daily and daily.strip() else DEFAULT_DAILY_OPTIMIZE_PROMPT,
+            "weekly_summary_prompt": weekly if weekly and weekly.strip() else DEFAULT_WEEKLY_SUMMARY_PROMPT,
             "check_typo": saved.get("check_typo", True),
             "check_punctuation_semantic": saved.get("check_punctuation_semantic", True),
         }
@@ -174,6 +177,7 @@ async def get_prompt(
         "typo_prompt": TYPO_PROMPT,
         "punctuation_prompt": PUNCTUATION_PROMPT,
         "daily_optimize_prompt": DEFAULT_DAILY_OPTIMIZE_PROMPT,
+        "weekly_summary_prompt": DEFAULT_WEEKLY_SUMMARY_PROMPT,
         "check_typo": True,
         "check_punctuation_semantic": True
     }

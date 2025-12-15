@@ -286,3 +286,49 @@ async def optimize_daily(data: OptimizeRequest):
         return OptimizeResponse(optimized_content=optimized)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== 周小结生成 ==========
+
+from app.schemas import GenerateWeeklySummaryRequest, GenerateWeeklySummaryResponse
+
+@router.post("/generate-weekly-summary", response_model=GenerateWeeklySummaryResponse)
+async def generate_weekly_summary(
+    data: GenerateWeeklySummaryRequest, 
+    db: AsyncSession = Depends(get_db)
+):
+    """根据每日动态生成周小结"""
+    from app.utils.date_parser import parse_date_range
+    from app.services.weekly_summary_generator import weekly_summary_generator
+    
+    # 解析日期范围
+    try:
+        start_date, end_date = parse_date_range(data.date_range)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # 检查人员是否存在
+    result = await db.execute(select(DailyMember).where(DailyMember.id == data.member_id))
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="人员不存在")
+    
+    # 生成周小结
+    try:
+        content = await weekly_summary_generator.generate(
+            db, data.member_id, start_date, end_date
+        )
+        
+        # 获取使用的记录数量
+        reports = await weekly_summary_generator.get_daily_reports(
+            db, data.member_id, start_date, end_date
+        )
+        
+        return GenerateWeeklySummaryResponse(
+            content=content,
+            start_date=start_date,
+            end_date=end_date,
+            report_count=len(reports)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

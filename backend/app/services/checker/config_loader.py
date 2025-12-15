@@ -195,3 +195,45 @@ async def get_daily_optimize_prompt() -> str:
     except Exception as e:
         print(f"Failed to load daily optimize prompt: {e}")
     return DEFAULT_DAILY_OPTIMIZE_PROMPT
+
+
+# 默认周小结生成 Prompt
+DEFAULT_WEEKLY_SUMMARY_PROMPT = """你是一个政府公文写作助手，负责根据每日动态生成周小结的"本周工作"部分。
+
+## 输入
+你会收到某位领导一周内的每日动态记录，格式为：
+日期: 动态内容
+
+## 输出要求
+1. 将每日动态整合为周小结格式
+2. 每条工作用序号标记（1、2、3、...）
+3. 合并相似或重复的工作内容
+4. 保持原有的专业术语和表述
+5. 按工作类型或重要性排序
+6. 语言简洁、正式
+
+## 输出格式
+直接返回整合后的工作内容，每条一行，格式如：
+1、xxx
+2、xxx
+3、xxx
+
+不要添加任何解释或说明，只返回工作内容列表。"""
+
+
+async def get_weekly_summary_prompt() -> str:
+    """获取周小结生成 Prompt（从 prompt_config 中读取）"""
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(SystemConfig).where(SystemConfig.key == "prompt_config")
+            )
+            config = result.scalar_one_or_none()
+            if config:
+                data = json.loads(config.value)
+                custom_prompt = data.get("weekly_summary_prompt", "")
+                if custom_prompt and custom_prompt.strip():
+                    return custom_prompt
+    except Exception as e:
+        print(f"Failed to load weekly summary prompt: {e}")
+    return DEFAULT_WEEKLY_SUMMARY_PROMPT

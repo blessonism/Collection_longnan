@@ -33,6 +33,7 @@ export function AdminPanel() {
     typo_prompt: '',
     punctuation_prompt: '',
     daily_optimize_prompt: '',
+    weekly_summary_prompt: '',
     check_typo: true,
     check_punctuation_semantic: true,
   })
@@ -335,6 +336,22 @@ export function AdminPanel() {
               <Textarea
                 value={prompt.daily_optimize_prompt}
                 onChange={e => setPrompt(prev => ({ ...prev, daily_optimize_prompt: e.target.value }))}
+                rows={15}
+                className="font-mono text-xs"
+              />
+            </CardContent>
+          </Card>
+
+          {/* 周小结生成 Prompt */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">周小结生成 Prompt</CardTitle>
+              <p className="text-xs text-slate-500">定义 AI 根据每日动态生成周小结的行为规则</p>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={prompt.weekly_summary_prompt}
+                onChange={e => setPrompt(prev => ({ ...prev, weekly_summary_prompt: e.target.value }))}
                 rows={15}
                 className="font-mono text-xs"
               />

@@ -101,6 +101,7 @@ export interface PromptConfig {
   typo_prompt: string
   punctuation_prompt: string
   daily_optimize_prompt: string
+  weekly_summary_prompt: string
   check_typo: boolean
   check_punctuation_semantic: boolean
 }
@@ -189,3 +190,21 @@ export const listDailyDates = () =>
 // AI 优化每日动态
 export const optimizeDaily = (content: string) =>
   api.post<{ optimized_content: string }>('/daily/optimize', { content })
+
+
+// ========== 周小结生成 ==========
+
+export interface GenerateWeeklySummaryRequest {
+  member_id: number
+  date_range: string
+}
+
+export interface GenerateWeeklySummaryResponse {
+  content: string
+  start_date: string
+  end_date: string
+  report_count: number
+}
+
+export const generateWeeklySummary = (data: GenerateWeeklySummaryRequest) =>
+  api.post<GenerateWeeklySummaryResponse>('/daily/generate-weekly-summary', data)
