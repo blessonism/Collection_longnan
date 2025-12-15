@@ -139,8 +139,8 @@ export function ArchivePanel() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-4">
-          <div>
+        <div className="space-y-3 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-4">
+          <div className="sm:col-span-3 md:col-span-1">
             <label className="text-sm font-medium mb-1 block">命名模板</label>
             <select
               value={config.naming_template}
@@ -152,21 +152,23 @@ export function ArchivePanel() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="text-sm font-medium mb-1 block">起始序号</label>
-            <Input
-              type="number"
-              value={config.start_number}
-              onChange={e => setConfig(prev => ({ ...prev, start_number: parseInt(e.target.value) || 1 }))}
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-1 block">序号位数</label>
-            <Input
-              type="number"
-              value={config.number_padding}
-              onChange={e => setConfig(prev => ({ ...prev, number_padding: parseInt(e.target.value) || 2 }))}
-            />
+          <div className="grid grid-cols-2 gap-3 sm:contents">
+            <div>
+              <label className="text-sm font-medium mb-1 block">起始序号</label>
+              <Input
+                type="number"
+                value={config.start_number}
+                onChange={e => setConfig(prev => ({ ...prev, start_number: parseInt(e.target.value) || 1 }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">序号位数</label>
+              <Input
+                type="number"
+                value={config.number_padding}
+                onChange={e => setConfig(prev => ({ ...prev, number_padding: parseInt(e.target.value) || 2 }))}
+              />
+            </div>
           </div>
         </div>
 
@@ -182,11 +184,11 @@ export function ArchivePanel() {
               groupedByDate.map(group => (
                 <label
                   key={group.dateRange}
-                  className={`flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-slate-50 cursor-pointer ${
+                  className={`flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-slate-50 cursor-pointer gap-2 ${
                     selectedGroup === group.dateRange ? 'bg-blue-50' : ''
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                     <input
                       type="radio"
                       name="dateGroup"
@@ -195,15 +197,21 @@ export function ArchivePanel() {
                         setSelectedGroup(group.dateRange)
                         setManifest(null)
                       }}
-                      className="w-4 h-4"
+                      className="w-4 h-4 flex-shrink-0"
                     />
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <span className="font-medium">{group.dateRange}</span>
+                    <Calendar className="w-4 h-4 text-slate-400 flex-shrink-0 hidden sm:block" />
+                    <span className="font-medium text-sm sm:text-base">{group.dateRange}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="success">{group.checkedCount} 已校验</Badge>
+                  <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                    {/* 移动端：简短标签 */}
+                    <span className="sm:hidden inline-flex items-center rounded-full bg-green-500 text-white text-[10px] font-medium px-1.5 py-0 leading-4">{group.checkedCount} 已校</span>
                     {group.uncheckedCount > 0 && (
-                      <Badge variant="warning">{group.uncheckedCount} 未校验</Badge>
+                      <span className="sm:hidden inline-flex items-center rounded-full bg-yellow-500 text-white text-[10px] font-medium px-1.5 py-0 leading-4">{group.uncheckedCount} 未校</span>
+                    )}
+                    {/* PC端：完整标签 */}
+                    <Badge variant="success" className="hidden sm:inline-flex">{group.checkedCount} 已校验</Badge>
+                    {group.uncheckedCount > 0 && (
+                      <Badge variant="warning" className="hidden sm:inline-flex">{group.uncheckedCount} 未校验</Badge>
                     )}
                   </div>
                 </label>
@@ -245,22 +253,53 @@ export function ArchivePanel() {
         )}
 
         {manifest && (
-          <div className="bg-slate-50 p-4 rounded-lg">
+          <div className="bg-slate-50 p-3 sm:p-4 rounded-lg overflow-hidden">
             <div className="flex items-center gap-2 mb-2">
-              <FileText className="w-4 h-4" />
-              <span className="font-medium">文件清单预览</span>
+              <FileText className="w-4 h-4 flex-shrink-0" />
+              <span className="font-medium text-sm sm:text-base">文件清单预览</span>
             </div>
-            <pre className="text-sm whitespace-pre-wrap font-mono">{manifest}</pre>
+            {/* 桌面端（md 以上）：原始格式 */}
+            <div className="hidden md:block overflow-x-auto">
+              <pre className="text-sm whitespace-pre font-mono">{manifest}</pre>
+            </div>
+            {/* 移动端和平板（md 以下）：简化列表格式 */}
+            <div className="md:hidden space-y-2">
+              <div className="text-xs text-slate-500 border-b border-slate-200 pb-2">
+                {manifest.split('\n').slice(0, 2).join(' · ')}
+              </div>
+              <div className="space-y-1.5">
+                {manifest.split('\n').filter(line => /^\d+\s+/.test(line.trim())).map((line, idx) => {
+                  const parts = line.trim().split(/\s+/)
+                  const seq = parts[0]
+                  const name = parts[parts.length - 1]
+                  const filename = parts.slice(1, -1).join(' ')
+                  return (
+                    <div key={idx} className="text-xs bg-white rounded p-2 border border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-mono">{seq}</span>
+                        <span className="font-medium">{name}</span>
+                      </div>
+                      <div className="text-slate-500 mt-1 break-all">{filename}</div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="text-xs text-slate-500 border-t border-slate-200 pt-2">
+                共计：{manifest.split('\n').filter(line => /^\d+\s+/.test(line.trim())).length} 份
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={handlePreview} disabled={selectedSubmissions.length === 0 || archiving}>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <Button variant="outline" onClick={handlePreview} disabled={selectedSubmissions.length === 0 || archiving} className="w-full sm:w-auto">
+            <FileText className="w-4 h-4 mr-2 sm:hidden" />
             预览清单
           </Button>
-          <Button onClick={handleArchive} disabled={selectedSubmissions.length === 0 || archiving}>
+          <Button onClick={handleArchive} disabled={selectedSubmissions.length === 0 || archiving} className="w-full sm:w-auto">
             {archiving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Package className="w-4 h-4 mr-2" />}
-            打包下载（{selectedSubmissions.length} 份）
+            <span className="hidden sm:inline">打包下载（{selectedSubmissions.length} 份）</span>
+            <span className="sm:hidden">下载 {selectedSubmissions.length} 份</span>
           </Button>
         </div>
       </CardContent>
