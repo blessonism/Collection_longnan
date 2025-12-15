@@ -298,8 +298,9 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
         </div>
 
         <div>
+          <label className="text-sm font-medium mb-1 block">本周工作 *</label>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-sm font-medium">本周工作 *</label>
+            <p className="text-xs text-slate-500">请按编号列出本周完成的主要工作</p>
             <Button
               type="button"
               variant="outline"
@@ -317,7 +318,6 @@ export function SummaryForm({ onSubmitSuccess }: Props) {
               <span className="sm:hidden">AI生成</span>
             </Button>
           </div>
-          <p className="text-xs text-slate-500 mb-2">请按编号列出本周完成的主要工作</p>
           <Textarea
             value={form.weekly_work}
             onChange={e => handleChange('weekly_work', e.target.value)}

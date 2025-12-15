@@ -104,21 +104,22 @@ function App() {
 
       <main className="max-w-4xl mx-auto px-2 sm:px-4 py-4 sm:py-6">
         <div className={`transition-opacity duration-150 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-          {displayTab === 'submit' && (
+          {/* 使用 hidden 而非条件渲染，保持组件状态 */}
+          <div className={displayTab === 'submit' ? '' : 'hidden'}>
             <SummaryForm onSubmitSuccess={() => setRefreshKey(k => k + 1)} />
-          )}
-          {displayTab === 'list' && (
+          </div>
+          <div className={displayTab === 'list' ? '' : 'hidden'}>
             <SubmissionList refreshKey={refreshKey} />
-          )}
-          {displayTab === 'archive' && (
+          </div>
+          <div className={displayTab === 'archive' ? '' : 'hidden'}>
             <ArchivePanel />
-          )}
-          {displayTab === 'daily' && (
+          </div>
+          <div className={displayTab === 'daily' ? '' : 'hidden'}>
             <DailyPanel />
-          )}
-          {displayTab === 'admin' && (
+          </div>
+          <div className={displayTab === 'admin' ? '' : 'hidden'}>
             <AdminPanel />
-          )}
+          </div>
         </div>
       </main>
     </div>
