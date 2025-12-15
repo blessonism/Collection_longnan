@@ -337,8 +337,10 @@ export function DailyPanel() {
         ...prev,
         [memberId]: content
       }))
-      // 重新加载汇总数据以更新统计
-      await loadSummary(selectedDate, true)
+      // 重新加载汇总数据以更新统计（不传 preserveContents，让它完全刷新）
+      // 因为我们已经手动更新了 contents 和 originalContents
+      const res = await getDailySummary(selectedDate)
+      setSummary(res.data)
     } catch (e) {
       console.error(e)
     } finally {
@@ -556,12 +558,12 @@ export function DailyPanel() {
                           <span className="text-xs text-amber-500">未保存</span>
                         )}
                       </div>
-                      {/* 保存按钮 - 有内容变化或有新内容时可点击 */}
+                      {/* 保存按钮 - 有变化时可点击（包括清空操作） */}
                       <button
                         onClick={() => handleSubmit(member.id)}
-                        disabled={!hasChanged || !content.trim() || submitting === member.id}
+                        disabled={!hasChanged || submitting === member.id}
                         className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
-                          hasChanged && content.trim()
+                          hasChanged
                             ? 'bg-slate-900 text-white hover:bg-slate-800' 
                             : 'text-slate-300 cursor-not-allowed'
                         }`}
