@@ -27,6 +27,7 @@ class DailyReport(Base):
     member_id = Column(Integer, ForeignKey("daily_members.id"), nullable=False)
     date = Column(Date, nullable=False, index=True)  # 动态日期
     content = Column(Text, nullable=False)  # 动态内容
+    original_content = Column(Text, nullable=True)  # AI优化前的原始内容
     created_at = Column(Date, default=get_shanghai_now)
     updated_at = Column(Date, default=get_shanghai_now, onupdate=get_shanghai_now)
 

@@ -8,10 +8,12 @@ import {
   listDailyMembers,
   getDailySummary,
   createDailyReport,
-
   optimizeDaily,
+  acceptOptimized,
+  restoreOriginal,
   type DailyMember,
   type DailyReportSummary,
+  type DailyReport,
 } from '@/lib/api'
 import {
   Calendar,
@@ -24,6 +26,7 @@ import {
   Save,
   Sparkles,
   X,
+  History,
 } from 'lucide-react'
 
 // 格式化日期为 YYYY-MM-DD（使用本地时区）
@@ -102,6 +105,26 @@ function parseDailyLine(line: string): { prefix: string; content: string } | nul
     return { prefix: match[1], content: match[2] }
   }
   return null
+}
+
+// 解析优化后的汇总文本，提取每个人的内容
+function parseOptimizedText(text: string): Array<{ member_name: string; content: string }> {
+  const lines = text.split('\n')
+  const results: Array<{ member_name: string; content: string }> = []
+  
+  for (const line of lines) {
+    // 匹配格式：数字、姓名 内容（姓名和内容之间必须有空格）
+    // 例如：1、张三 上午参加会议，下午处理业务。
+    const match = line.match(/^\d+、(\S+)\s+(.+)$/)
+    if (match) {
+      results.push({
+        member_name: match[1],
+        content: match[2].trim()
+      })
+    }
+  }
+  
+  return results
 }
 
 // 基于序号匹配的智能差异对比
@@ -214,9 +237,16 @@ export function DailyPanel() {
   const [originalContents, setOriginalContents] = useState<Record<number, string>>({})
   const [optimizing, setOptimizing] = useState(false)
   const [optimizedText, setOptimizedText] = useState<string | null>(null)
+  const [originalSummaryText, setOriginalSummaryText] = useState<string | null>(null) // 优化前的原始汇总文本
+  const [showingOriginalSummary, setShowingOriginalSummary] = useState(false) // 汇总区域是否显示原始内容
   const [showOptimizeModal, setShowOptimizeModal] = useState(false)
   const [editingOptimized, setEditingOptimized] = useState('')
   const [contentVisible, setContentVisible] = useState(true)
+  const [accepting, setAccepting] = useState(false)
+  // 记录哪些成员正在显示原始内容（用于切换）
+  const [showingOriginal, setShowingOriginal] = useState<Record<number, boolean>>({})
+  // 存储原始内容（从服务器获取）
+  const [serverOriginalContents, setServerOriginalContents] = useState<Record<number, string | null>>({})
   
   // 用于取消过期请求
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -250,13 +280,38 @@ export function DailyPanel() {
       
       // 设置该日期的已提交内容
       const serverContents: Record<number, string> = {}
+      const serverOriginals: Record<number, string | null> = {}
       res.data.reports.forEach((r) => {
         serverContents[r.member_id] = r.content
+        serverOriginals[r.member_id] = r.original_content || null
       })
       setOriginalContents(serverContents)
+      setServerOriginalContents(serverOriginals)
+      
+      // 检查是否有任何记录被优化过（有 original_content）
+      const hasAnyOptimized = res.data.reports.some(r => r.original_content)
+      
       // 只有在非保留模式下才重置 contents
       if (!preserveContents) {
         setContents(serverContents)
+        setShowingOriginal({})  // 重置显示状态
+        setShowingOriginalSummary(false)
+        
+        // 如果有优化过的记录，生成原始汇总文本
+        if (hasAnyOptimized) {
+          // 根据各条记录的 original_content 生成原始汇总
+          const originalLines: string[] = [`每日动态（${res.data.date_display}）`]
+          res.data.reports.forEach((r, i) => {
+            // 使用 original_content（如果有）或 content
+            const contentToUse = r.original_content || r.content
+            originalLines.push(`${i + 1}、${r.member_name} ${contentToUse}`)
+          })
+          setOriginalSummaryText(originalLines.join('\n'))
+          setOptimizedText(res.data.summary_text) // 当前的 summary_text 就是优化后的
+        } else {
+          setOptimizedText(null)
+          setOriginalSummaryText(null)
+        }
       } else {
         // 保留模式：只更新已保存的内容，保留用户正在编辑的内容
         setContents(prev => {
@@ -268,7 +323,6 @@ export function DailyPanel() {
           return newContents
         })
       }
-      setOptimizedText(null)
     } catch (e: any) {
       if (e.name !== 'CanceledError') {
         console.error(e)
@@ -337,10 +391,28 @@ export function DailyPanel() {
         ...prev,
         [memberId]: content
       }))
-      // 重新加载汇总数据以更新统计（不传 preserveContents，让它完全刷新）
-      // 因为我们已经手动更新了 contents 和 originalContents
+      // 重置该成员的优化状态（因为内容已被手动修改）
+      setServerOriginalContents(prev => ({
+        ...prev,
+        [memberId]: null
+      }))
+      setShowingOriginal(prev => ({
+        ...prev,
+        [memberId]: false
+      }))
+      // 重置汇总区域的优化状态（因为单条内容变化会影响汇总）
+      setOptimizedText(null)
+      setOriginalSummaryText(null)
+      setShowingOriginalSummary(false)
+      // 重新加载汇总数据以更新统计
       const res = await getDailySummary(selectedDate)
       setSummary(res.data)
+      // 更新服务器原始内容状态
+      const newServerOriginals: Record<number, string | null> = {}
+      res.data.reports.forEach((r) => {
+        newServerOriginals[r.member_id] = r.original_content || null
+      })
+      setServerOriginalContents(newServerOriginals)
     } catch (e) {
       console.error(e)
     } finally {
@@ -350,9 +422,11 @@ export function DailyPanel() {
 
 
 
-  // 复制汇总文本
+  // 复制汇总文本（复制当前显示的内容）
   const handleCopy = async () => {
-    const textToCopy = optimizedText || summary?.summary_text
+    const textToCopy = showingOriginalSummary 
+      ? originalSummaryText 
+      : (optimizedText || summary?.summary_text)
     if (!textToCopy) return
     try {
       await navigator.clipboard.writeText(textToCopy)
@@ -380,15 +454,86 @@ export function DailyPanel() {
   }
 
   // 采纳优化结果
-  const handleAcceptOptimized = () => {
-    setOptimizedText(editingOptimized)
-    setShowOptimizeModal(false)
+  const handleAcceptOptimized = async () => {
+    if (!summary) return
+    
+    setAccepting(true)
+    try {
+      // 解析优化后的文本
+      const parsedReports = parseOptimizedText(editingOptimized)
+      
+      if (parsedReports.length === 0) {
+        alert('无法解析优化后的内容，请检查格式')
+        return
+      }
+      
+      // 在 API 调用之前保存原始汇总文本（如果还没有保存过）
+      const originalText = !originalSummaryText ? summary.summary_text : originalSummaryText
+      
+      // 调用 API 批量更新
+      const res = await acceptOptimized({
+        date: selectedDate,
+        reports: parsedReports
+      })
+      
+      if (res.data.skipped_names.length > 0) {
+        alert(`以下姓名未匹配到：${res.data.skipped_names.join('、')}`)
+      }
+      
+      // 设置原始汇总文本
+      setOriginalSummaryText(originalText)
+      
+      // 更新成功，重新加载数据（使用 preserveContents 模式避免重置状态）
+      await loadSummary(selectedDate, true)
+      setOptimizedText(editingOptimized)
+      setShowingOriginalSummary(false) // 采纳后显示优化后的内容
+      setShowOptimizeModal(false)
+    } catch (e) {
+      console.error(e)
+      alert('采纳失败，请重试')
+    } finally {
+      setAccepting(false)
+    }
   }
 
   // 取消优化
   const handleCancelOptimize = () => {
     setShowOptimizeModal(false)
     setEditingOptimized('')
+  }
+
+  // 切换显示原始内容/优化后内容
+  const toggleOriginalContent = async (memberId: number, reportId: number) => {
+    const isShowingOriginal = showingOriginal[memberId]
+    
+    if (isShowingOriginal) {
+      // 当前显示原始内容，切换回优化后内容
+      setShowingOriginal(prev => ({ ...prev, [memberId]: false }))
+      // 恢复显示当前内容
+      const report = summary?.reports.find(r => r.member_id === memberId)
+      if (report) {
+        setContents(prev => ({ ...prev, [memberId]: report.content }))
+      }
+    } else {
+      // 当前显示优化后内容，切换到原始内容
+      const originalContent = serverOriginalContents[memberId]
+      if (originalContent) {
+        setShowingOriginal(prev => ({ ...prev, [memberId]: true }))
+        setContents(prev => ({ ...prev, [memberId]: originalContent }))
+      }
+    }
+  }
+
+  // 恢复原始内容到数据库
+  const handleRestoreOriginal = async (reportId: number, memberId: number) => {
+    try {
+      await restoreOriginal(reportId)
+      // 重新加载数据
+      await loadSummary(selectedDate)
+    } catch (e) {
+      console.error(e)
+      alert('恢复失败，请重试')
+    }
   }
 
   // 获取人员的提交状态
@@ -454,11 +599,31 @@ export function DailyPanel() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base">汇总预览</CardTitle>
-                {optimizedText && (
-                  <Badge variant="success" className="text-xs">已优化</Badge>
+                {originalSummaryText && (
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs ${showingOriginalSummary ? 'text-slate-500 border-slate-300' : 'text-purple-600 border-purple-200'}`}
+                  >
+                    {showingOriginalSummary ? '原始内容' : '已优化'}
+                  </Badge>
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {/* 切换原始/优化内容按钮 */}
+                {originalSummaryText && (
+                  <button
+                    onClick={() => setShowingOriginalSummary(!showingOriginalSummary)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
+                      showingOriginalSummary
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                    title={showingOriginalSummary ? '查看优化后' : '查看原始内容'}
+                  >
+                    <History className="w-3 h-3" />
+                    <span className="hidden sm:inline">{showingOriginalSummary ? '优化后' : '原始'}</span>
+                  </button>
+                )}
                 <Button 
                   variant="outline" 
                   size="sm"
@@ -496,18 +661,8 @@ export function DailyPanel() {
           </CardHeader>
           <CardContent className="px-3 sm:px-6">
             <div className="bg-slate-50 rounded-lg p-2 sm:p-3 text-sm whitespace-pre-wrap max-h-48 sm:max-h-60 overflow-y-auto">
-              {optimizedText || summary.summary_text}
+              {showingOriginalSummary ? originalSummaryText : (optimizedText || summary.summary_text)}
             </div>
-            {optimizedText && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="mt-2 text-xs text-slate-500"
-                onClick={() => setOptimizedText(null)}
-              >
-                查看原文
-              </Button>
-            )}
           </CardContent>
         </Card>
       )}
@@ -536,7 +691,10 @@ export function DailyPanel() {
                 const isSubmitted = !!report
                 const content = contents[member.id] ?? ''
                 const originalContent = originalContents[member.id] ?? ''
-                const hasChanged = content !== originalContent
+                const hasOriginal = !!serverOriginalContents[member.id]
+                const isShowingOriginal = showingOriginal[member.id]
+                // 当处于"查看原始内容"模式时，不算作有变化
+                const hasChanged = !isShowingOriginal && content !== originalContent
 
                 return (
                   <div
@@ -554,33 +712,62 @@ export function DailyPanel() {
                         {isSubmitted && (
                           <Badge variant="success" className="text-xs">已提交</Badge>
                         )}
+                        {hasOriginal && (
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${isShowingOriginal ? 'text-slate-500 border-slate-300' : 'text-purple-600 border-purple-200'}`}
+                          >
+                            {isShowingOriginal ? '原始内容' : '已优化'}
+                          </Badge>
+                        )}
                         {hasChanged && (
                           <span className="text-xs text-amber-500">未保存</span>
                         )}
                       </div>
-                      {/* 保存按钮 - 有变化时可点击（包括清空操作） */}
-                      <button
-                        onClick={() => handleSubmit(member.id)}
-                        disabled={!hasChanged || submitting === member.id}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
-                          hasChanged
-                            ? 'bg-slate-900 text-white hover:bg-slate-800' 
-                            : 'text-slate-300 cursor-not-allowed'
-                        }`}
-                      >
-                        {submitting === member.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Save className="w-3 h-3" />
+                      <div className="flex items-center gap-1">
+                        {/* 历史记录按钮 - 有原始内容时显示 */}
+                        {hasOriginal && report && (
+                          <button
+                            onClick={() => toggleOriginalContent(member.id, report.id)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
+                              isShowingOriginal
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'text-slate-500 hover:bg-slate-100'
+                            }`}
+                            title={isShowingOriginal ? '查看优化后' : '查看原始内容'}
+                          >
+                            <History className="w-3 h-3" />
+                            <span className="hidden sm:inline">{isShowingOriginal ? '优化后' : '原始'}</span>
+                          </button>
                         )}
-                        <span>保存</span>
-                      </button>
+                        {/* 保存按钮 - 有变化时可点击（包括清空操作） */}
+                        <button
+                          onClick={() => handleSubmit(member.id)}
+                          disabled={!hasChanged || submitting === member.id}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
+                            hasChanged
+                              ? 'bg-slate-900 text-white hover:bg-slate-800' 
+                              : 'text-slate-300 cursor-not-allowed'
+                          }`}
+                        >
+                          {submitting === member.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Save className="w-3 h-3" />
+                          )}
+                          <span>保存</span>
+                        </button>
+                      </div>
                     </div>
                     {/* 输入区域 - 自动扩展高度 */}
                     <textarea
                       placeholder={`输入${member.name}的今日动态...`}
                       value={content}
                       onChange={(e) => {
+                        // 用户手动编辑时，退出"查看原始内容"模式
+                        if (isShowingOriginal) {
+                          setShowingOriginal((prev) => ({ ...prev, [member.id]: false }))
+                        }
                         setContents((prev) => ({
                           ...prev,
                           [member.id]: e.target.value,
@@ -706,12 +893,21 @@ export function DailyPanel() {
             </div>
             
             <div className="flex items-center justify-end gap-2 sm:gap-3 p-3 sm:p-4 border-t bg-slate-50">
-              <Button variant="outline" size="sm" className="h-8 sm:h-9" onClick={handleCancelOptimize}>
+              <Button variant="outline" size="sm" className="h-8 sm:h-9" onClick={handleCancelOptimize} disabled={accepting}>
                 取消
               </Button>
-              <Button size="sm" className="h-8 sm:h-9" onClick={handleAcceptOptimized}>
-                <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                采纳
+              <Button size="sm" className="h-8 sm:h-9" onClick={handleAcceptOptimized} disabled={accepting}>
+                {accepting ? (
+                  <>
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 animate-spin" />
+                    保存中
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    采纳并保存
+                  </>
+                )}
               </Button>
             </div>
           </div>

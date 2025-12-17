@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import init_db
 from app.routers import form_router, check_router, submission_router, archive_router, admin_router, daily_router
+from app.migrations.add_original_content import migrate as run_migrations
 import os
 
 @asynccontextmanager
@@ -12,6 +13,8 @@ async def lifespan(app: FastAPI):
     os.makedirs("./uploads", exist_ok=True)
     os.makedirs("./archives", exist_ok=True)
     await init_db()
+    # 运行数据库迁移（添加缺失的列）
+    run_migrations()
     yield
 
 app = FastAPI(

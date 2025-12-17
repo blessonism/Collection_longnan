@@ -140,6 +140,7 @@ export interface DailyReport {
   member_name: string
   date: string
   content: string
+  original_content?: string | null  // AI优化前的原始内容
 }
 
 export interface DailyReportSummary {
@@ -190,6 +191,29 @@ export const listDailyDates = () =>
 // AI 优化每日动态
 export const optimizeDaily = (content: string) =>
   api.post<{ optimized_content: string }>('/daily/optimize', { content })
+
+// 采纳 AI 优化结果
+export interface OptimizedReportItem {
+  member_name: string
+  content: string
+}
+
+export interface AcceptOptimizedRequest {
+  date: string
+  reports: OptimizedReportItem[]
+}
+
+export interface AcceptOptimizedResponse {
+  updated_count: number
+  skipped_names: string[]
+}
+
+export const acceptOptimized = (data: AcceptOptimizedRequest) =>
+  api.post<AcceptOptimizedResponse>('/daily/accept-optimized', data)
+
+// 恢复原始内容
+export const restoreOriginal = (reportId: number) =>
+  api.post<DailyReport>(`/daily/restore-original/${reportId}`)
 
 
 // ========== 周小结生成 ==========

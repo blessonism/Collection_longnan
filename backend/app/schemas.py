@@ -88,6 +88,7 @@ class DailyReportResponse(BaseModel):
     member_name: str
     date: date
     content: str
+    original_content: Optional[str] = None  # AI优化前的原始内容
 
     class Config:
         from_attributes = True
@@ -113,3 +114,18 @@ class GenerateWeeklySummaryResponse(BaseModel):
     start_date: date  # 解析后的开始日期
     end_date: date  # 解析后的结束日期
     report_count: int  # 使用的每日动态数量
+
+
+# ========== AI 优化采纳 ==========
+
+class OptimizedReportItem(BaseModel):
+    member_name: str  # 人员姓名
+    content: str  # 优化后的内容
+
+class AcceptOptimizedRequest(BaseModel):
+    date: date  # 日期
+    reports: List[OptimizedReportItem]  # 优化后的内容列表
+
+class AcceptOptimizedResponse(BaseModel):
+    updated_count: int  # 更新的记录数
+    skipped_names: List[str]  # 未匹配到的姓名

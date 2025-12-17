@@ -8,7 +8,8 @@ from app.database import get_db
 from app.models.daily import DailyMember, DailyReport
 from app.schemas import (
     DailyMemberCreate, DailyMemberUpdate, DailyMemberResponse, DailyMemberImport,
-    DailyReportCreate, DailyReportUpdate, DailyReportResponse, DailyReportSummary
+    DailyReportCreate, DailyReportUpdate, DailyReportResponse, DailyReportSummary,
+    AcceptOptimizedRequest, AcceptOptimizedResponse
 )
 
 router = APIRouter(prefix="/api/daily", tags=["每日动态"])
@@ -134,7 +135,8 @@ async def create_report(data: DailyReportCreate, db: AsyncSession = Depends(get_
             member_id=existing.member_id,
             member_name=member.name,
             date=existing.date,
-            content=existing.content
+            content=existing.content,
+            original_content=existing.original_content
         )
     
     # 创建新记录
@@ -148,7 +150,8 @@ async def create_report(data: DailyReportCreate, db: AsyncSession = Depends(get_
         member_id=report.member_id,
         member_name=member.name,
         date=report.date,
-        content=report.content
+        content=report.content,
+        original_content=report.original_content
     )
 
 
@@ -167,7 +170,8 @@ async def list_reports(report_date: date, db: AsyncSession = Depends(get_db)):
             member_id=report.member_id,
             member_name=member.name if member else "未知",
             date=report.date,
-            content=report.content
+            content=report.content,
+            original_content=report.original_content
         ))
     return response_list
 
@@ -202,7 +206,8 @@ async def get_summary(report_date: date, db: AsyncSession = Depends(get_db)):
                 member_id=report.member_id,
                 member_name=member.name,
                 date=report.date,
-                content=report.content
+                content=report.content,
+                original_content=report.original_content
             ))
             # 直接使用原始名字，不添加"同志"
             summary_lines.append(f"{i + 1}、{member.name} {report.content}")
@@ -239,7 +244,8 @@ async def update_report(report_id: int, data: DailyReportUpdate, db: AsyncSessio
         member_id=report.member_id,
         member_name=member.name if member else "未知",
         date=report.date,
-        content=report.content
+        content=report.content,
+        original_content=report.original_content
     )
 
 
@@ -332,3 +338,77 @@ async def generate_weekly_summary(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ========== AI 优化采纳 ==========
+
+@router.post("/accept-optimized", response_model=AcceptOptimizedResponse)
+async def accept_optimized(data: AcceptOptimizedRequest, db: AsyncSession = Depends(get_db)):
+    """采纳 AI 优化结果，批量更新每个人的动态内容"""
+    # 获取所有活跃人员，建立姓名到 ID 的映射
+    result = await db.execute(select(DailyMember).where(DailyMember.is_active == True))
+    members = result.scalars().all()
+    name_to_id = {m.name: m.id for m in members}
+    
+    updated_count = 0
+    skipped_names = []
+    
+    for item in data.reports:
+        member_id = name_to_id.get(item.member_name)
+        if not member_id:
+            skipped_names.append(item.member_name)
+            continue
+        
+        # 查找该人员当天的记录
+        result = await db.execute(
+            select(DailyReport).where(
+                DailyReport.member_id == member_id,
+                DailyReport.date == data.date
+            )
+        )
+        report = result.scalar_one_or_none()
+        
+        if report:
+            # 保存原始内容（如果还没有保存过）
+            if not report.original_content:
+                report.original_content = report.content
+            # 更新为优化后的内容
+            report.content = item.content.strip()
+            updated_count += 1
+    
+    await db.commit()
+    
+    return AcceptOptimizedResponse(
+        updated_count=updated_count,
+        skipped_names=skipped_names
+    )
+
+
+@router.post("/restore-original/{report_id}", response_model=DailyReportResponse)
+async def restore_original(report_id: int, db: AsyncSession = Depends(get_db)):
+    """恢复某条记录的原始内容"""
+    result = await db.execute(select(DailyReport).where(DailyReport.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    
+    if not report.original_content:
+        raise HTTPException(status_code=400, detail="没有原始内容可恢复")
+    
+    # 交换 content 和 original_content
+    report.content, report.original_content = report.original_content, report.content
+    await db.commit()
+    await db.refresh(report)
+    
+    # 获取人员姓名
+    member_result = await db.execute(select(DailyMember).where(DailyMember.id == report.member_id))
+    member = member_result.scalar_one_or_none()
+    
+    return DailyReportResponse(
+        id=report.id,
+        member_id=report.member_id,
+        member_name=member.name if member else "未知",
+        date=report.date,
+        content=report.content,
+        original_content=report.original_content
+    )
