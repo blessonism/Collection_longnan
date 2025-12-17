@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,8 @@ export function DailyMemberManager() {
   const [importText, setImportText] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   const loadMembers = async () => {
     setLoading(true)
@@ -95,6 +97,47 @@ export function DailyMemberManager() {
     }
   }
 
+  // 拖拽排序
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+  }
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    setDragOverIndex(index)
+  }
+
+  const handleDragEnd = async () => {
+    if (draggedIndex === null || dragOverIndex === null || draggedIndex === dragOverIndex) {
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      return
+    }
+
+    // 重新排序
+    const newMembers = [...members]
+    const [draggedMember] = newMembers.splice(draggedIndex, 1)
+    newMembers.splice(dragOverIndex, 0, draggedMember)
+
+    // 先更新本地状态
+    setMembers(newMembers)
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+
+    // 批量更新 sort_order
+    try {
+      for (let i = 0; i < newMembers.length; i++) {
+        if (newMembers[i].sort_order !== i) {
+          await updateDailyMember(newMembers[i].id, { sort_order: i })
+        }
+      }
+    } catch (e) {
+      console.error(e)
+      // 出错时重新加载
+      await loadMembers()
+    }
+  }
+
   if (loading) {
     return (
       <Card>
@@ -151,11 +194,18 @@ export function DailyMemberManager() {
               {members.map((member, index) => (
                 <div
                   key={member.id}
-                  className={`flex items-center gap-2 p-2 rounded-lg border ${
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
                     member.is_active ? 'bg-white' : 'bg-slate-50 opacity-60'
+                  } ${draggedIndex === index ? 'opacity-50' : ''} ${
+                    dragOverIndex === index && draggedIndex !== index ? 'border-blue-400 border-2' : ''
                   }`}
                 >
-                  <GripVertical className="w-4 h-4 text-slate-300" />
+                  {/* 拖拽手柄 */}
+                  <GripVertical className="w-4 h-4 text-slate-300 cursor-grab active:cursor-grabbing" />
                   <span className="text-sm text-slate-500 w-6">{index + 1}.</span>
 
                   {editingId === member.id ? (

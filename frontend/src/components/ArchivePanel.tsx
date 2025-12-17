@@ -28,7 +28,7 @@ export function ArchivePanel() {
   const [archiving, setArchiving] = useState(false)
   const [manifest, setManifest] = useState<string | null>(null)
   const [config, setConfig] = useState<Omit<ArchiveConfig, 'submission_ids'>>({
-    naming_template: '{序号}_{姓名}_周小结_{日期范围}',
+    naming_template: '{姓名}周小结({日期范围})',
     start_number: 1,
     number_padding: 2,
   })
