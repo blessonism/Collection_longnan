@@ -448,7 +448,7 @@ export function DailyPanel({ isActive = true }: DailyPanelProps) {
           
           // 重新生成汇总文本
           const summaryLines: string[] = []
-          members.forEach((m, i) => {
+          members.forEach((m) => {
             const report = newReports.find(r => r.member_id === m.id)
             if (report) {
               summaryLines.push(`${summaryLines.length + 1}、${m.display_name} ${report.content}`)
