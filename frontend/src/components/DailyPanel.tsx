@@ -25,6 +25,7 @@ import {
   Sparkles,
   X,
   History,
+  ArrowLeftRight,
 } from 'lucide-react'
 
 // 格式化日期为 YYYY-MM-DD（使用本地时区）
@@ -245,6 +246,8 @@ export function DailyPanel() {
   const [showingOriginal, setShowingOriginal] = useState<Record<number, boolean>>({})
   // 存储原始内容（从服务器获取）
   const [serverOriginalContents, setServerOriginalContents] = useState<Record<number, string | null>>({})
+  // 汇总区域是否显示 diff 对比视图
+  const [showSummaryDiff, setShowSummaryDiff] = useState(false)
   
   // 用于取消过期请求
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -398,10 +401,7 @@ export function DailyPanel() {
         ...prev,
         [memberId]: false
       }))
-      // 重置汇总区域的优化状态（因为单条内容变化会影响汇总）
-      setOptimizedText(null)
-      setOriginalSummaryText(null)
-      setShowingOriginalSummary(false)
+      
       // 重新加载汇总数据以更新统计
       const res = await getDailySummary(selectedDate)
       setSummary(res.data)
@@ -411,6 +411,23 @@ export function DailyPanel() {
         newServerOriginals[r.member_id] = r.original_content || null
       })
       setServerOriginalContents(newServerOriginals)
+      
+      // 智能更新汇总区域的优化状态（方案 A）
+      // 如果之前有原始汇总文本，保留它，并更新当前汇总文本
+      if (originalSummaryText) {
+        // 更新 optimizedText 为最新的汇总内容
+        setOptimizedText(res.data.summary_text)
+      }
+      // 如果内容被清空，检查是否还有任何优化过的记录
+      if (!content) {
+        const hasAnyOptimized = res.data.reports.some(r => r.original_content)
+        if (!hasAnyOptimized) {
+          // 没有任何优化记录了，重置汇总区域状态
+          setOptimizedText(null)
+          setOriginalSummaryText(null)
+          setShowingOriginalSummary(false)
+        }
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -595,6 +612,17 @@ export function DailyPanel() {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {/* 查看对比按钮 */}
+                {originalSummaryText && (
+                  <button
+                    onClick={() => setShowSummaryDiff(true)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all text-slate-500 hover:bg-slate-100"
+                    title="查看优化前后对比"
+                  >
+                    <ArrowLeftRight className="w-3 h-3" />
+                    <span>对比</span>
+                  </button>
+                )}
                 {/* 切换原始/优化内容按钮 */}
                 {originalSummaryText && (
                   <button
@@ -894,6 +922,98 @@ export function DailyPanel() {
                     采纳并保存
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 汇总对比弹窗 */}
+      {showSummaryDiff && originalSummaryText && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                <h2 className="text-base sm:text-lg font-semibold">优化前后对比</h2>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowSummaryDiff(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-3 sm:p-4">
+              {(() => {
+                const diff = diffDailyReport(originalSummaryText, optimizedText || summary?.summary_text || '')
+                const changeCount = diff.lines.filter(l => l.hasChange).length
+                return (
+                  <div className="space-y-3 sm:space-y-4">
+                    {/* 修改统计 */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-slate-500">
+                      <span>共 {changeCount} 处修改</span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-red-100 border border-red-200 rounded"></span>
+                        <span>删除</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-100 border border-green-200 rounded"></span>
+                        <span>新增</span>
+                      </span>
+                    </div>
+                    
+                    {/* 逐行对比 */}
+                    <div className="border rounded-lg overflow-hidden text-xs sm:text-sm">
+                      {diff.lines.map((line, i) => (
+                        <div key={i} className={i > 0 ? 'border-t border-slate-100' : ''}>
+                          {line.hasChange ? (
+                            <div className="space-y-1 py-1.5 sm:py-2 px-2 sm:px-3 bg-slate-50">
+                              {/* 原文 - 删除的部分用红色高亮 */}
+                              <div className="flex items-start gap-1 sm:gap-2">
+                                <span className="text-red-500 font-medium select-none w-3 sm:w-4 flex-shrink-0">−</span>
+                                <span className="flex-1 break-all">
+                                  {line.prefix && <span className="text-slate-600">{line.prefix}</span>}
+                                  {line.originalParts?.map((part, pi) => (
+                                    <span
+                                      key={pi}
+                                      className={part.type === 'del' ? 'bg-red-200 text-red-800 rounded px-0.5' : 'text-slate-600'}
+                                    >
+                                      {part.text}
+                                    </span>
+                                  ))}
+                                </span>
+                              </div>
+                              {/* 新文 - 新增的部分用绿色高亮 */}
+                              <div className="flex items-start gap-1 sm:gap-2">
+                                <span className="text-green-500 font-medium select-none w-3 sm:w-4 flex-shrink-0">+</span>
+                                <span className="flex-1 break-all">
+                                  {line.prefix && <span className="text-slate-600">{line.prefix}</span>}
+                                  {line.modifiedParts?.map((part, pi) => (
+                                    <span
+                                      key={pi}
+                                      className={part.type === 'add' ? 'bg-green-200 text-green-800 rounded px-0.5' : 'text-slate-600'}
+                                    >
+                                      {part.text}
+                                    </span>
+                                  ))}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="py-1 sm:py-1.5 px-2 sm:px-3 text-slate-600 break-all">
+                              {line.originalLine || '\u00A0'}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+            
+            <div className="flex items-center justify-end p-3 sm:p-4 border-t bg-slate-50">
+              <Button variant="outline" size="sm" className="h-8 sm:h-9" onClick={() => setShowSummaryDiff(false)}>
+                关闭
               </Button>
             </div>
           </div>

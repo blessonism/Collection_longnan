@@ -49,7 +49,7 @@ function App() {
             className="text-xl font-bold cursor-pointer hover:text-slate-600 transition-colors"
             onClick={() => setActiveTab('submit')}
           >
-            动态管理平台
+            城市社区工作动态管理平台
           </h1>
           <button
             onClick={() => setActiveTab('admin')}
