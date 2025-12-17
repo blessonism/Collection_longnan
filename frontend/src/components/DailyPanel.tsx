@@ -10,10 +10,8 @@ import {
   createDailyReport,
   optimizeDaily,
   acceptOptimized,
-  restoreOriginal,
   type DailyMember,
   type DailyReportSummary,
-  type DailyReport,
 } from '@/lib/api'
 import {
   Calendar,
@@ -503,7 +501,7 @@ export function DailyPanel() {
   }
 
   // 切换显示原始内容/优化后内容
-  const toggleOriginalContent = async (memberId: number, reportId: number) => {
+  const toggleOriginalContent = (memberId: number) => {
     const isShowingOriginal = showingOriginal[memberId]
     
     if (isShowingOriginal) {
@@ -521,18 +519,6 @@ export function DailyPanel() {
         setShowingOriginal(prev => ({ ...prev, [memberId]: true }))
         setContents(prev => ({ ...prev, [memberId]: originalContent }))
       }
-    }
-  }
-
-  // 恢复原始内容到数据库
-  const handleRestoreOriginal = async (reportId: number, memberId: number) => {
-    try {
-      await restoreOriginal(reportId)
-      // 重新加载数据
-      await loadSummary(selectedDate)
-    } catch (e) {
-      console.error(e)
-      alert('恢复失败，请重试')
     }
   }
 
@@ -728,7 +714,7 @@ export function DailyPanel() {
                         {/* 历史记录按钮 - 有原始内容时显示 */}
                         {hasOriginal && report && (
                           <button
-                            onClick={() => toggleOriginalContent(member.id, report.id)}
+                            onClick={() => toggleOriginalContent(member.id)}
                             className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
                               isShowingOriginal
                                 ? 'bg-purple-100 text-purple-700'
