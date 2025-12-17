@@ -224,7 +224,11 @@ function diffDailyReport(original: string, modified: string): {
   return { lines: result }
 }
 
-export function DailyPanel() {
+interface DailyPanelProps {
+  isActive?: boolean
+}
+
+export function DailyPanel({ isActive = true }: DailyPanelProps) {
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()))
   const [members, setMembers] = useState<DailyMember[]>([])
   const [summary, setSummary] = useState<DailyReportSummary | null>(null)
@@ -253,8 +257,10 @@ export function DailyPanel() {
   const abortControllerRef = useRef<AbortController | null>(null)
   const prevDateRef = useRef(selectedDate)
 
-  // 初始加载人员列表（只加载一次）
+  // 加载人员列表（初始化时和切换到此 tab 时）
   useEffect(() => {
+    if (!isActive) return
+    
     const loadMembers = async () => {
       try {
         const res = await listDailyMembers()
@@ -264,17 +270,20 @@ export function DailyPanel() {
       }
     }
     loadMembers()
-  }, [])
+  }, [isActive])
 
   // 加载某天的汇总数据
-  const loadSummary = async (date: string, preserveContents = false) => {
+  const loadSummary = async (date: string, preserveContents = false, showLoading = true) => {
     // 取消之前的请求
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
     abortControllerRef.current = new AbortController()
     
-    setSummaryLoading(true)
+    // 只在需要时显示 loading 状态（切换日期时不显示，避免闪烁）
+    if (showLoading) {
+      setSummaryLoading(true)
+    }
     try {
       const res = await getDailySummary(date)
       setSummary(res.data)
@@ -340,17 +349,22 @@ export function DailyPanel() {
     prevDateRef.current = selectedDate
     
     if (isDateChange) {
-      // 先淡出
+      // 先淡出整个内容区域
       setContentVisible(false)
-      // 等淡出动画完成后加载数据
+      
+      // 同时开始加载数据（不显示 loading 状态，避免闪烁）
+      const loadPromise = loadSummary(selectedDate, false, false)
+      
+      // 等淡出动画和数据加载都完成后再淡入
       const timer = setTimeout(async () => {
-        await loadSummary(selectedDate)
-        // 数据加载完成后淡入
+        await loadPromise
         setContentVisible(true)
-      }, 150)
+      }, 200)
+      
       return () => clearTimeout(timer)
     } else {
-      loadSummary(selectedDate)
+      // 初始加载，显示 loading
+      loadSummary(selectedDate, false, true)
     }
   }, [selectedDate])
 
@@ -402,32 +416,85 @@ export function DailyPanel() {
         [memberId]: false
       }))
       
-      // 重新加载汇总数据以更新统计
-      const res = await getDailySummary(selectedDate)
-      setSummary(res.data)
-      // 更新服务器原始内容状态
-      const newServerOriginals: Record<number, string | null> = {}
-      res.data.reports.forEach((r) => {
-        newServerOriginals[r.member_id] = r.original_content || null
-      })
-      setServerOriginalContents(newServerOriginals)
-      
-      // 智能更新汇总区域的优化状态（方案 A）
-      // 如果之前有原始汇总文本，保留它，并更新当前汇总文本
-      if (originalSummaryText) {
-        // 更新 optimizedText 为最新的汇总内容
-        setOptimizedText(res.data.summary_text)
-      }
-      // 如果内容被清空，检查是否还有任何优化过的记录
-      if (!content) {
-        const hasAnyOptimized = res.data.reports.some(r => r.original_content)
-        if (!hasAnyOptimized) {
-          // 没有任何优化记录了，重置汇总区域状态
-          setOptimizedText(null)
-          setOriginalSummaryText(null)
-          setShowingOriginalSummary(false)
+      // 立即更新本地汇总数据（乐观更新）
+      if (summary) {
+        const member = members.find(m => m.id === memberId)
+        if (member) {
+          // 更新 reports 列表
+          let newReports = [...summary.reports]
+          const existingIndex = newReports.findIndex(r => r.member_id === memberId)
+          
+          if (content) {
+            // 有内容：更新或添加
+            const newReport = {
+              id: existingIndex >= 0 ? newReports[existingIndex].id : -1,
+              member_id: memberId,
+              member_name: member.display_name,
+              date: selectedDate,
+              content: content,
+              original_content: null
+            }
+            if (existingIndex >= 0) {
+              newReports[existingIndex] = newReport
+            } else {
+              newReports.push(newReport)
+            }
+          } else {
+            // 内容为空：删除
+            if (existingIndex >= 0) {
+              newReports.splice(existingIndex, 1)
+            }
+          }
+          
+          // 重新生成汇总文本
+          const summaryLines: string[] = []
+          members.forEach((m, i) => {
+            const report = newReports.find(r => r.member_id === m.id)
+            if (report) {
+              summaryLines.push(`${summaryLines.length + 1}、${m.display_name} ${report.content}`)
+            }
+          })
+          const newSummaryText = summaryLines.length > 0 
+            ? `每日动态（${summary.date_display}）\n${summaryLines.join('\n')}`
+            : ''
+          
+          // 立即更新 UI
+          setSummary({
+            ...summary,
+            reports: newReports,
+            submitted_count: newReports.length,
+            summary_text: newSummaryText
+          })
+          
+          // 更新优化文本（如果有）
+          if (optimizedText) {
+            setOptimizedText(newSummaryText)
+          }
         }
       }
+      
+      // 后台静默刷新以确保数据一致性（不阻塞 UI）
+      getDailySummary(selectedDate).then(res => {
+        setSummary(res.data)
+        const newServerOriginals: Record<number, string | null> = {}
+        res.data.reports.forEach((r) => {
+          newServerOriginals[r.member_id] = r.original_content || null
+        })
+        setServerOriginalContents(newServerOriginals)
+        
+        if (originalSummaryText) {
+          setOptimizedText(res.data.summary_text)
+        }
+        if (!content) {
+          const hasAnyOptimized = res.data.reports.some(r => r.original_content)
+          if (!hasAnyOptimized) {
+            setOptimizedText(null)
+            setOriginalSummaryText(null)
+            setShowingOriginalSummary(false)
+          }
+        }
+      }).catch(console.error)
+      
     } catch (e) {
       console.error(e)
     } finally {
@@ -582,14 +649,19 @@ export function DailyPanel() {
               <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
                 今天
               </Button>
-              {summaryLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-              ) : (
-                <Badge variant="secondary">
-                  <Users className="w-3 h-3 mr-1" />
-                  {summary?.submitted_count || 0}/{summary?.total_members || 0}
-                </Badge>
-              )}
+              <Badge 
+                variant="secondary" 
+                className={`min-w-[60px] justify-center transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-50'}`}
+              >
+                <Users className="w-3 h-3 mr-1" />
+                {summaryLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <>
+                    {summary?.submitted_count || 0}/{summary?.total_members || 0}
+                  </>
+                )}
+              </Badge>
             </div>
           </div>
         </CardContent>
@@ -722,7 +794,7 @@ export function DailyPanel() {
                     {/* 姓名、状态和保存按钮 */}
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-700">{member.name}</span>
+                        <span className="text-sm font-medium text-slate-700">{member.display_name}</span>
                         {isSubmitted && (
                           <Badge variant="success" className="text-xs">已提交</Badge>
                         )}
@@ -775,7 +847,7 @@ export function DailyPanel() {
                     </div>
                     {/* 输入区域 - 自动扩展高度 */}
                     <textarea
-                      placeholder={`输入${member.name}的今日动态...`}
+                      placeholder={`输入${member.display_name}的今日动态...`}
                       value={content}
                       onChange={(e) => {
                         // 用户手动编辑时，退出"查看原始内容"模式

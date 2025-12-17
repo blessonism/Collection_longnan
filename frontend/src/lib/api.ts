@@ -129,7 +129,8 @@ export default api
 
 export interface DailyMember {
   id: number
-  name: string
+  name: string  // 全名（用于周小结）
+  display_name: string  // 显示名（用于每日动态，如"志明同志"）
   sort_order: number
   is_active: boolean
 }
@@ -165,8 +166,8 @@ export const importDailyMembers = (names: string[]) =>
 export const updateDailyMember = (id: number, data: Partial<DailyMember>) =>
   api.put<DailyMember>(`/daily/members/${id}`, data)
 
-export const deleteDailyMember = (id: number) =>
-  api.delete(`/daily/members/${id}`)
+export const deleteDailyMember = (id: number, permanent = false) =>
+  api.delete(`/daily/members/${id}`, { params: { permanent } })
 
 // 动态记录
 export const createDailyReport = (data: { member_id: number; date: string; content: string }) =>

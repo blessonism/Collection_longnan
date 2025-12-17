@@ -63,7 +63,8 @@ class DailyMemberUpdate(BaseModel):
 
 class DailyMemberResponse(BaseModel):
     id: int
-    name: str
+    name: str  # 全名（用于周小结）
+    display_name: str  # 显示名（用于每日动态，如"志明同志"）
     sort_order: int
     is_active: bool
 

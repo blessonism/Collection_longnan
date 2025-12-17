@@ -76,11 +76,11 @@ export function DailyMemberManager() {
     }
   }
 
-  // 删除/禁用人员
+  // 永久删除人员
   const handleDelete = async (id: number) => {
-    if (!confirm('确定删除该人员？')) return
+    if (!confirm('确定永久删除该人员？此操作将同时删除该人员的所有动态记录，且不可恢复！')) return
     try {
-      await deleteDailyMember(id)
+      await deleteDailyMember(id, true)
       await loadMembers()
     } catch (e) {
       console.error(e)
@@ -160,7 +160,7 @@ export function DailyMemberManager() {
         </CardHeader>
         <CardContent>
           <Textarea
-            placeholder="输入人员名单，每行一个或用逗号分隔&#10;示例：&#10;志明同志&#10;锋军同志&#10;彭鸿同志&#10;立龙同志&#10;颖娴同志&#10;智超同志&#10;兵兵同志&#10;显旺同志&#10;春英同志&#10;桂梅同志&#10;声明同志"
+            placeholder="输入人员全名，每行一个或用逗号分隔&#10;示例：&#10;陈志明&#10;赖锋军&#10;彭鸿&#10;谢立龙&#10;廖颖娴&#10;张智超&#10;宋兵兵&#10;叶显旺&#10;赖春英&#10;欧桂梅&#10;凌声明"
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             rows={6}

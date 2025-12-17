@@ -18,6 +18,17 @@ router = APIRouter(prefix="/api/daily", tags=["每日动态"])
 WEEKDAY_MAP = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 
+def get_display_name(full_name: str) -> str:
+    """
+    根据全名生成每日动态的显示名
+    规则：取全名后两字 + "同志"
+    例如："陈志明" → "志明同志"
+    """
+    if len(full_name) >= 2:
+        return full_name[-2:] + "同志"
+    return full_name + "同志"
+
+
 # ========== 人员管理 ==========
 
 @router.get("/members", response_model=List[DailyMemberResponse])
@@ -28,7 +39,17 @@ async def list_members(include_inactive: bool = False, db: AsyncSession = Depend
         query = query.where(DailyMember.is_active == True)
     query = query.order_by(DailyMember.sort_order, DailyMember.id)
     result = await db.execute(query)
-    return result.scalars().all()
+    members = result.scalars().all()
+    return [
+        DailyMemberResponse(
+            id=m.id,
+            name=m.name,
+            display_name=get_display_name(m.name),
+            sort_order=m.sort_order,
+            is_active=m.is_active
+        )
+        for m in members
+    ]
 
 
 @router.post("/members", response_model=DailyMemberResponse)
@@ -38,7 +59,13 @@ async def create_member(data: DailyMemberCreate, db: AsyncSession = Depends(get_
     db.add(member)
     await db.commit()
     await db.refresh(member)
-    return member
+    return DailyMemberResponse(
+        id=member.id,
+        name=member.name,
+        display_name=get_display_name(member.name),
+        sort_order=member.sort_order,
+        is_active=member.is_active
+    )
 
 
 @router.post("/members/import", response_model=List[DailyMemberResponse])
@@ -65,7 +92,16 @@ async def import_members(data: DailyMemberImport, db: AsyncSession = Depends(get
             await db.commit()
             await db.refresh(member)
             members.append(member)
-    return members
+    return [
+        DailyMemberResponse(
+            id=m.id,
+            name=m.name,
+            display_name=get_display_name(m.name),
+            sort_order=m.sort_order,
+            is_active=m.is_active
+        )
+        for m in members
+    ]
 
 
 @router.put("/members/{member_id}", response_model=DailyMemberResponse)
@@ -81,20 +117,36 @@ async def update_member(member_id: int, data: DailyMemberUpdate, db: AsyncSessio
         setattr(member, key, value)
     await db.commit()
     await db.refresh(member)
-    return member
+    return DailyMemberResponse(
+        id=member.id,
+        name=member.name,
+        display_name=get_display_name(member.name),
+        sort_order=member.sort_order,
+        is_active=member.is_active
+    )
 
 
 @router.delete("/members/{member_id}")
-async def delete_member(member_id: int, db: AsyncSession = Depends(get_db)):
-    """删除人员（软删除）"""
+async def delete_member(member_id: int, permanent: bool = False, db: AsyncSession = Depends(get_db)):
+    """删除人员（默认软删除，permanent=true 时永久删除）"""
     result = await db.execute(select(DailyMember).where(DailyMember.id == member_id))
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="人员不存在")
     
-    member.is_active = False
-    await db.commit()
-    return {"message": "删除成功"}
+    if permanent:
+        # 永久删除：先删除关联的动态记录
+        await db.execute(select(DailyReport).where(DailyReport.member_id == member_id))
+        from sqlalchemy import delete
+        await db.execute(delete(DailyReport).where(DailyReport.member_id == member_id))
+        await db.delete(member)
+        await db.commit()
+        return {"message": "永久删除成功"}
+    else:
+        # 软删除
+        member.is_active = False
+        await db.commit()
+        return {"message": "禁用成功"}
 
 
 # ========== 动态记录 ==========
@@ -133,7 +185,7 @@ async def create_report(data: DailyReportCreate, db: AsyncSession = Depends(get_
         return DailyReportResponse(
             id=existing.id,
             member_id=existing.member_id,
-            member_name=member.name,
+            member_name=get_display_name(member.name),
             date=existing.date,
             content=existing.content,
             original_content=existing.original_content
@@ -148,7 +200,7 @@ async def create_report(data: DailyReportCreate, db: AsyncSession = Depends(get_
     return DailyReportResponse(
         id=report.id,
         member_id=report.member_id,
-        member_name=member.name,
+        member_name=get_display_name(member.name),
         date=report.date,
         content=report.content,
         original_content=report.original_content
@@ -168,7 +220,7 @@ async def list_reports(report_date: date, db: AsyncSession = Depends(get_db)):
         response_list.append(DailyReportResponse(
             id=report.id,
             member_id=report.member_id,
-            member_name=member.name if member else "未知",
+            member_name=get_display_name(member.name) if member else "未知",
             date=report.date,
             content=report.content,
             original_content=report.original_content
@@ -201,16 +253,17 @@ async def get_summary(report_date: date, db: AsyncSession = Depends(get_db)):
     for i, member in enumerate(members):
         report = reports_map.get(member.id)
         if report:
+            display_name = get_display_name(member.name)
             report_list.append(DailyReportResponse(
                 id=report.id,
                 member_id=report.member_id,
-                member_name=member.name,
+                member_name=display_name,  # 使用显示名
                 date=report.date,
                 content=report.content,
                 original_content=report.original_content
             ))
-            # 直接使用原始名字，不添加"同志"
-            summary_lines.append(f"{i + 1}、{member.name} {report.content}")
+            # 使用显示名（如"志明同志"）
+            summary_lines.append(f"{i + 1}、{display_name} {report.content}")
     
     # 生成汇总文本
     summary_text = f"每日动态（{date_display}）\n" + "\n".join(summary_lines) if summary_lines else ""
@@ -242,7 +295,7 @@ async def update_report(report_id: int, data: DailyReportUpdate, db: AsyncSessio
     return DailyReportResponse(
         id=report.id,
         member_id=report.member_id,
-        member_name=member.name if member else "未知",
+        member_name=get_display_name(member.name) if member else "未知",
         date=report.date,
         content=report.content,
         original_content=report.original_content
@@ -345,16 +398,17 @@ async def generate_weekly_summary(
 @router.post("/accept-optimized", response_model=AcceptOptimizedResponse)
 async def accept_optimized(data: AcceptOptimizedRequest, db: AsyncSession = Depends(get_db)):
     """采纳 AI 优化结果，批量更新每个人的动态内容"""
-    # 获取所有活跃人员，建立姓名到 ID 的映射
+    # 获取所有活跃人员，建立显示名到 ID 的映射
     result = await db.execute(select(DailyMember).where(DailyMember.is_active == True))
     members = result.scalars().all()
-    name_to_id = {m.name: m.id for m in members}
+    # 使用显示名（如"志明同志"）作为 key
+    display_name_to_id = {get_display_name(m.name): m.id for m in members}
     
     updated_count = 0
     skipped_names = []
     
     for item in data.reports:
-        member_id = name_to_id.get(item.member_name)
+        member_id = display_name_to_id.get(item.member_name)
         if not member_id:
             skipped_names.append(item.member_name)
             continue
@@ -407,7 +461,7 @@ async def restore_original(report_id: int, db: AsyncSession = Depends(get_db)):
     return DailyReportResponse(
         id=report.id,
         member_id=report.member_id,
-        member_name=member.name if member else "未知",
+        member_name=get_display_name(member.name) if member else "未知",
         date=report.date,
         content=report.content,
         original_content=report.original_content

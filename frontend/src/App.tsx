@@ -115,7 +115,7 @@ function App() {
             <ArchivePanel />
           </div>
           <div className={displayTab === 'daily' ? '' : 'hidden'}>
-            <DailyPanel />
+            <DailyPanel isActive={displayTab === 'daily'} />
           </div>
           <div className={displayTab === 'admin' ? '' : 'hidden'}>
             <AdminPanel />
